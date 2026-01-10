@@ -35,36 +35,35 @@ Each TODO includes the priority and estimated scope.
 
   - **Integration Status** (completed 2026-01-10):
 
-    | Section | Status | Location in Main Doc |
-    | --- | --- | --- |
-    | Executive Summary | ✅ Covered | Different focus but overlaps |
-    | Research Methodology | ✅ Covered | Appendix B |
-    | Transaction Read/Write Limits | ✅ Covered | Core Limits Reference §1 |
-    | Document Structure Limits | ✅ Covered | Core Limits Reference §2 |
-    | Execution Time/Memory Limits | ✅ Covered | Core Limits Reference §3 |
-    | Index and Schema Limits | ✅ Covered | Core Limits Reference §5 |
-    | Concurrency/Scheduling Limits | ✅ Covered | Core Limits Reference §3 |
-    | OCC Configuration | ✅ Covered | Pitfall 5 section |
-    | Environment Variable Limits | ✅ Covered | Core Limits Reference §6 |
-    | Knobs System Architecture | ✅ Integrated | Configuration System Architecture |
-    | Comparative Analysis | ✅ Integrated | Configuration System Architecture |
-    | Self-Hosted Best Practices | ✅ Integrated | Appendix E |
-    | Appendix A: Knobs Reference | ✅ Integrated | Appendix C |
-    | Appendix B: Hard-Coded Limits | ✅ Integrated | Appendix D |
+| Section | Status | Location in Main Doc |
+| --- | --- | --- |
+| Executive Summary | ✅ Covered | Different focus but overlaps |
+| Research Methodology | ✅ Covered | Appendix B |
+| Transaction Read/Write Limits | ✅ Covered | Core Limits Reference §1 |
+| Document Structure Limits | ✅ Covered | Core Limits Reference §2 |
+| Execution Time/Memory Limits | ✅ Covered | Core Limits Reference §3 |
+| Index and Schema Limits | ✅ Covered | Core Limits Reference §5 |
+| Concurrency/Scheduling Limits | ✅ Covered | Core Limits Reference §3 |
+| OCC Configuration | ✅ Covered | Pitfall 5 section |
+| Environment Variable Limits | ✅ Covered | Core Limits Reference §6 |
+| Knobs System Architecture | ✅ Integrated | Configuration System Architecture |
+| Comparative Analysis | ✅ Integrated | Configuration System Architecture |
+| Self-Hosted Best Practices | ✅ Integrated | Appendix E |
+| Appendix A: Knobs Reference | ✅ Integrated | Appendix C |
+| Appendix B: Hard-Coded Limits | ✅ Integrated | Appendix D |
+- All content integrated:
 
-  - All content integrated:
+  - [x] Configuration System Architecture (knobs system explanation)
 
-    - [x] Configuration System Architecture (knobs system explanation)
+  - [x] Complete Knobs Reference (now Appendix C)
 
-    - [x] Complete Knobs Reference (now Appendix C)
+  - [x] Hard-Coded Limits Reference (now Appendix D)
 
-    - [x] Hard-Coded Limits Reference (now Appendix D)
+  - [x] Self-hosted deployment configuration guidance (now Appendix E)
 
-    - [x] Self-hosted deployment configuration guidance (now Appendix E)
+  - [x] Comparative Analysis (41 configurable vs 22 hard-coded)
 
-    - [x] Comparative Analysis (41 configurable vs 22 hard-coded)
-
-  - The implementation doc has been deleted (all content now in main document)
+- The implementation doc has been deleted (all content now in main document)
 
 - [x] **DONE: File Storage Limits Section** (Priority: High) ✅
 
@@ -195,8 +194,8 @@ Each TODO includes the priority and estimated scope.
 
   - References to detailed sections later in the document for each component
 
-  - **Added**: Platform Architecture diagram, "Where Limits Apply" table, "Common
-    Challenges by Component" subsection
+  - **Added**: Platform Architecture diagram, “Where Limits Apply” table, “Common
+    Challenges by Component” subsection
 
 - [ ] **TODO: Add Interactive Examples** (Priority: Low)
 
@@ -210,9 +209,9 @@ Each TODO includes the priority and estimated scope.
 
 ### 1. Document Structure and Organization
 
-**Approach**: Keep as a single comprehensive document. Document size is acceptable as long
-as it is well-structured, logical, and organized. Navigational aids (TOC, anchors) will be
-handled separately at the rendering layer.
+**Approach**: Keep as a single comprehensive document.
+Document size is acceptable as long as it is well-structured, logical, and organized.
+Navigational aids (TOC, anchors) will be handled separately at the rendering layer.
 
 **Key structural priority**: Add Architectural Overview Section (Priority: High)
 
@@ -224,7 +223,7 @@ handled separately at the rendering layer.
 
 - Brief overview of common challenges to orient readers
 
-- This is NOT a user manual—it's a landscape view helping readers understand where
+- This is NOT a user manual—it’s a landscape view helping readers understand where
   different limits apply
 
 ### 2. Research Methodology Section Placement
@@ -519,11 +518,12 @@ If this document becomes public-facing:
 3. ✅ Add Architectural Overview section (platform architecture, component map, common
    challenges) (DONE)
 
-4. ✅ Move research methodology to appendix as "Writing and Maintenance Process" (DONE)
+4. ✅ Move research methodology to appendix as “Writing and Maintenance Process” (DONE)
 
 ### Phase 2: Content Expansion (4-8 hours)
 
-1. ✅ Integrate Backend Limits Implementation Doc (knobs reference, hard-coded limits) (DONE)
+1. ✅ Integrate Backend Limits Implementation Doc (knobs reference, hard-coded limits)
+   (DONE)
 
 2. ✅ Add File Storage Limits section (DONE - Section 8)
 
@@ -537,11 +537,16 @@ If this document becomes public-facing:
 
 1. Reorganize limits by component (database, execution, storage, scheduling)
 
-2. Reorganize pitfalls by category
+2. ✅ Reorganize pitfalls by category (DONE - Added category headers: Database,
+   Aggregation, Concurrency, Operations, Execution)
 
-3. Add priority indicators to best practices
+3. ✅ Add new pitfalls for newly-added sections (DONE - Added: File Storage URL
+   Expiration, Cron Job Silent Failures, HTTP Action Body Size Surprises, Durable
+   Workflow Journal Limits, Workflow Retry and Idempotency Confusion)
 
-4. Consolidate duplicate information between prose and tables
+4. Add priority indicators to best practices
+
+5. Consolidate duplicate information between prose and tables
 
 ### Phase 4: Polish (2-3 hours)
 
@@ -593,10 +598,10 @@ The Convex limits document is comprehensive and valuable but would benefit from:
 
 2. **Quick reference summary** for common cases
 
-3. **Category-based organization** of pitfalls
+3. ~~**Category-based organization** of pitfalls~~ ✅ DONE
 
-4. **Expanded coverage** of missing platform areas (file storage, HTTP actions, cron,
-   workflows)
+4. ~~**Expanded coverage** of missing platform areas (file storage, HTTP actions, cron,
+   workflows)~~ ✅ DONE
 
 5. **Reduced duplication** between prose and tables
 

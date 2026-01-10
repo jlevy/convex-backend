@@ -59,9 +59,10 @@ storage and bandwidth quotas.
 
 ## Architectural Overview
 
-This section provides a high-level map of the Convex platform architecture and how limits
-apply to each component. Understanding this landscape helps orient readers to where
-different constraints come into play.
+This section provides a high-level map of the Convex platform architecture and how
+limits apply to each component.
+Understanding this landscape helps orient readers to where different constraints come
+into play.
 
 ### Platform Architecture
 
@@ -126,23 +127,35 @@ Each architectural layer has its own set of constraints:
 Understanding where developers typically encounter issues:
 
 **Database Operations**
+
 - Transaction read limit exceeded when scanning large tables without pagination
+
 - Document size limit hit when storing large blobs or arrays
+
 - OCC conflicts under high write contention to the same documents
 
 **Function Execution**
+
 - Query/mutation timeout (1s) exceeded for complex operations
+
 - Action timeout confusion (10 min documented, but 5 min for nested calls)
+
 - Memory limits hit when processing large datasets in-memory
 
 **Concurrency and Scaling**
+
 - OCC retries causing latency spikes under contention
+
 - Subscription fan-out limits for real-time features
+
 - Scheduled function queue depth limits
 
 **Cross-Runtime Patterns**
+
 - Actions calling mutations/queries vs mutations calling actions
+
 - Nested action timeout behavior (undocumented 5-minute limit)
+
 - Error context lost across runtime boundaries
 
 The sections that follow provide detailed coverage of each limit category, along with
@@ -152,12 +165,12 @@ workarounds and best practices for each challenge area.
 
 ## Configuration System Architecture
 
-Understanding how Convex implements and configures its limits is essential for self-hosted
-deployments and for understanding which limits can be adjusted.
+Understanding how Convex implements and configures its limits is essential for
+self-hosted deployments and for understanding which limits can be adjusted.
 
 ### The Knobs System
 
-Convex uses a centralized configuration system called "knobs" defined in
+Convex uses a centralized configuration system called “knobs” defined in
 `crates/common/src/knobs.rs`. This system provides:
 
 - **Environment variable override**: All knobs can be set via environment variables for
@@ -177,12 +190,14 @@ pub static TRANSACTION_MAX_READ_SIZE_BYTES: LazyLock<usize> = LazyLock::new(|| {
 });
 ```
 
-The knobs system is well-designed for operational flexibility. Self-hosted deployments
-can override any configurable knob via environment variables without code changes.
+The knobs system is well-designed for operational flexibility.
+Self-hosted deployments can override any configurable knob via environment variables
+without code changes.
 
 ### Configurable vs Hard-Coded Limits
 
-Not all limits can be changed via configuration. The breakdown:
+Not all limits can be changed via configuration.
+The breakdown:
 
 | Category | Configurable | Hard-Coded | Total |
 | --- | --- | --- | --- |
@@ -207,8 +222,8 @@ embedded in serialization and storage layers.
 
 ### Code Defaults vs Documented Limits
 
-Convex Cloud applies stricter limits than the source code defaults, likely differentiated
-by plan tier:
+Convex Cloud applies stricter limits than the source code defaults, likely
+differentiated by plan tier:
 
 | Limit | Code Default | Documented | Ratio |
 | --- | --- | --- | --- |
@@ -979,25 +994,32 @@ File storage in Convex is separate from document storage and has its own constra
 **Storage Quotas** (see Section 4 for plan-specific limits):
 
 - File storage is billed separately from database storage
+
 - Bandwidth includes file downloads
+
 - Files are stored in S3-compatible object storage
 
 **Key Constraints**:
 
-- `APPLICATION_MAX_CONCURRENT_UPLOADS` limits simultaneous file uploads during deployment
+- `APPLICATION_MAX_CONCURRENT_UPLOADS` limits simultaneous file uploads during
+  deployment
+
 - Large files use multipart upload automatically
+
 - File metadata (size, content type) is stored alongside the file
 
 **Sources**:
 
 - `crates/storage/src/lib.rs` — Storage implementation
+
 - `crates/file_storage/` — File storage API
+
 - `crates/common/src/knobs.rs:845-846, 1416-1420` — Configurable limits
 
 ### 9. HTTP Actions Limits
 
-HTTP actions (`httpAction` in `convex/http.ts`) have specific limits for request/response
-handling.
+HTTP actions (`httpAction` in `convex/http.ts`) have specific limits for
+request/response handling.
 
 **Body Size Limits** ✅ 🔒:
 
@@ -1025,13 +1047,17 @@ HTTP actions inherit the standard action timeout (10 minutes), but are also subj
 **Request Handling**:
 
 - Headers are normalized (lowercase keys)
+
 - Body is streamed (not buffered entirely in memory for large requests)
+
 - CORS must be handled manually in your HTTP action code
 
 **Response Handling**:
 
 - Responses exceeding 20 MiB trigger `HttpResponseTooLarge` error
+
 - Streaming responses are supported but still subject to total size limit
+
 - Content-Type must be set explicitly
 
 **Error Messages**:
@@ -1044,7 +1070,9 @@ HTTP actions inherit the standard action timeout (10 minutes), but are also subj
 **Sources**:
 
 - `crates/udf/src/http_action.rs:30` — Body limit constant
+
 - `crates/isolate/src/environment/action/mod.rs:605-614` — Response size enforcement
+
 - `crates/isolate/src/environment/action/stream.rs:17-21` — Multipart limit
 
 ### 10. Cron Jobs Limits
@@ -1085,20 +1113,27 @@ Convex uses standard cron syntax with 5 fields:
 **Log Retention**:
 
 - Only the **5 most recent logs** are retained per cron job
+
 - Older logs are garbage collected automatically
+
 - Log content is truncated at 1,000 characters
 
 **Best Practices**:
 
 1. **Keep cron jobs lightweight** — Use them to trigger work, not do heavy processing
+
 2. **Handle failures gracefully** — No automatic retry means you need error handling
+
 3. **Monitor execution** — Only 5 logs retained, so use external monitoring for history
+
 4. **Avoid long-running crons** — Use scheduled functions for complex work chains
 
 **Sources**:
 
 - `crates/model/src/cron_jobs/mod.rs` — Cron job model and retention
+
 - `crates/application/src/cron_jobs/mod.rs` — Execution and logging
+
 - [Convex Cron Jobs Docs](https://docs.convex.dev/scheduling/cron-jobs)
 
 ### 11. Durable Workflows
@@ -1125,18 +1160,27 @@ for state management and execution.
 **Workflow Patterns**:
 
 1. **Checkpoint-Based Orchestration**:
+
    - Workflow handler (mutation) coordinates steps
+
    - Each step is checkpointed to journal
+
    - On crash/timeout, workflow resumes from last checkpoint
 
 2. **Fire-and-Forget Chains**:
+
    - For workflows spanning days, use `ctx.scheduler.runAfter()`
+
    - Chain workflows: Day 1 workflow schedules Day 2 workflow
+
    - Scheduler retention: 7 days (see Section 3)
 
 3. **Pass-by-Reference Pattern**:
+
    - Store large payloads in documents, pass IDs through workflow
+
    - Avoids hitting journal and step data limits
+
    - Required for LLM responses, large datasets
 
 **Memory Considerations**:
@@ -1149,20 +1193,27 @@ for state management and execution.
 **Step Count Guidelines**:
 
 - **< 20 steps**: Safe for most workflows
+
 - **20-50 steps**: Monitor replay time, consider chunking
+
 - **> 50 steps**: High risk of replay timeout; use fire-and-forget chains
 
 **Key Constraints**:
 
 1. **Journal size** — Total workflow state must fit in 8 MiB
+
 2. **Replay time** — All steps replay on each handler invocation
+
 3. **Idempotency** — Steps must be idempotent (may replay on retry)
+
 4. **Serialization** — All step data must be JSON-serializable
 
 **Sources**:
 
 - [Convex Workflow Component](https://github.com/get-convex/workflow)
+
 - [Durable Workflows Architecture](../../../project/research/current/research-convex-durable-workflows-architecture.md)
+
 - `@convex-dev/workflow` package documentation
 
 * * *
@@ -1329,9 +1380,14 @@ export const incrementCounter = mutation({
 ## Common Pitfalls and Workarounds
 
 This section catalogs frequent issues encountered when building applications on Convex,
-along with proven mitigation strategies.
+organized by category for easier reference.
+Each pitfall includes symptoms, root causes, and proven mitigation strategies.
 
-### Pitfall 1: Exceeding 8 MiB Read Limit with `.collect()`
+### Database Pitfalls
+
+These pitfalls relate to reading and writing data, document structure, and query design.
+
+#### Pitfall: Exceeding 8 MiB Read Limit with `.collect()`
 
 **Symptom**: Runtime error `"transaction exceeded resource limits"` when querying tables
 with many documents or large documents.
@@ -1389,7 +1445,7 @@ Always use `.take()` or `.paginate()`.
 
 - [Queries that Scale](https://stack.convex.dev/queries-that-scale)
 
-### Pitfall 2: Large Documents Causing Read Limit Issues Even with `.take()`
+#### Pitfall: Large Documents Causing Read Limit Issues Even with `.take()`
 
 **Symptom**: Queries fail with read limit error even when using `.take(n)` with small
 values of `n`.
@@ -1447,7 +1503,11 @@ const count = thread.messageCount; // Pre-computed
 
 - [Convex Limits - Document Size](https://docs.convex.dev/production/state/limits)
 
-### Pitfall 3: Counting and Aggregating Over Large Datasets
+### Aggregation Pitfalls
+
+These pitfalls relate to counting, summing, and computing statistics over data.
+
+#### Pitfall: Counting and Aggregating Over Large Datasets
 
 **Symptom**: Need accurate counts, sums, or other aggregates over thousands to millions
 of records, but scanning exceeds read limits.
@@ -1530,7 +1590,9 @@ that can grow beyond a few hundred documents.
 
 - [Convex Aggregate Component](https://github.com/get-convex/aggregate)
 
-### Pitfall 4: Post-Index Filtering Instead of Composite Indexes
+#### Pitfall: Post-Index Filtering Instead of Composite Indexes
+
+*Category: Database - placed here for topical flow with query optimization*
 
 **Symptom**: Queries are slow or hit read limits even when using indexes.
 
@@ -1578,7 +1640,11 @@ Prefer composite indexes over post-index filtering.
 
 - [Queries that Scale](https://stack.convex.dev/queries-that-scale)
 
-### Pitfall 5: Optimistic Concurrency Control (OCC) Conflicts
+### Concurrency Pitfalls
+
+These pitfalls relate to concurrent writes, OCC conflicts, and write contention.
+
+#### Pitfall: Optimistic Concurrency Control (OCC) Conflicts
 
 **Symptom**: Mutations fail or retry frequently with errors related to conflicting
 writes, especially under high concurrency.
@@ -1758,7 +1824,11 @@ export UDF_EXECUTOR_OCC_MAX_BACKOFF_MS=5000
 
 - Source: `crates/common/src/knobs.rs:146-155`
 
-### Pitfall 6: Storage and Bandwidth Overages
+### Operations Pitfalls
+
+These pitfalls relate to storage, bandwidth, costs, and operational concerns.
+
+#### Pitfall: Storage and Bandwidth Overages
 
 **Symptom**: Unexpected costs from exceeding included storage or bandwidth quotas.
 
@@ -1826,7 +1896,73 @@ Monitor usage monthly and set up automated alerts.
 
 - [Convex Limits - Storage](https://docs.convex.dev/production/state/limits)
 
-### Pitfall 7: Pagination Loops in Queries and Mutations
+#### Pitfall: File Storage URL Expiration Confusion
+
+**Symptom**: File URLs stop working after some time, or users see access denied errors
+when trying to download files they previously could access.
+
+**Root Cause**: File storage URLs are signed with expiration times.
+Storing these URLs in documents or sharing them externally will fail once they expire.
+
+**Workarounds**:
+
+1. **Always generate fresh URLs when needed**:
+   ```typescript
+   // GOOD: Generate URL at access time
+   const url = await ctx.storage.getUrl(fileId);
+   return { ...document, fileUrl: url };
+   ```
+
+2. **Don’t store signed URLs in documents**:
+   ```typescript
+   // BAD: URL will expire
+   await ctx.db.patch(docId, { fileUrl: signedUrl });
+   
+   // GOOD: Store file ID, generate URL on read
+   await ctx.db.patch(docId, { fileId: storageId });
+   ```
+
+3. **For long-lived sharing**, implement your own access control with fresh URL
+   generation
+
+**Best Practice**: Store `Id<"_storage">` references, not URL strings.
+
+#### Pitfall: Cron Job Silent Failures
+
+**Symptom**: Cron jobs stop running or fail silently, with no obvious errors in logs.
+
+**Root Cause**: Cron jobs have limited log retention (5 logs) and no automatic retry.
+Failures can be lost if not monitored externally.
+
+**Workarounds**:
+
+1. **Log to a dedicated table for monitoring**:
+   ```typescript
+   export const myCronJob = mutation({
+     handler: async (ctx) => {
+       try {
+         // ... job logic
+         await ctx.db.insert('cronLogs', { job: 'myCron', status: 'success', ts: Date.now() });
+       } catch (e) {
+         await ctx.db.insert('cronLogs', { job: 'myCron', status: 'error', error: String(e), ts: Date.now() });
+         throw e;
+       }
+     }
+   });
+   ```
+
+2. **Use external monitoring** (Datadog, etc.)
+   for critical crons
+
+3. **Keep cron jobs lightweight** — use them to trigger actions, not do heavy work
+
+**Best Practice**: Never rely on Convex’s 5-log retention for cron job monitoring.
+
+### Execution Pitfalls
+
+These pitfalls relate to function execution, timeouts, and runtime behavior.
+
+#### Pitfall: Pagination Loops in Queries and Mutations
 
 **Symptom**: Pagination loops (do-while with cursor) hang in tests, timeout in
 migrations, or fail with execution time limits.
@@ -1981,7 +2117,9 @@ export const countAllTurns = query({
 
 - [Convex Pagination](https://docs.convex.dev/database/pagination)
 
-### Pitfall 8: Bucket Timestamp Keys to Avoid Monotonic Writes
+#### Pitfall: Bucket Timestamp Keys to Avoid Monotonic Writes
+
+*Category: Concurrency - placed here for topical flow with write patterns*
 
 **Symptom**: High write contention when using aggregate keys based on `_creationTime` or
 other monotonically increasing values.
@@ -2019,7 +2157,7 @@ appropriate granularity (minute, hour, day) based on write frequency.
 
 - [Convex Aggregate Component](https://github.com/get-convex/aggregate)
 
-### Pitfall 9: Dangling Promises in Actions
+#### Pitfall: Dangling Promises in Actions
 
 **Symptom**: Console warnings showing “1 unawaited operation” in Convex logs, or
 intermittent errors in action invocations that seem unrelated to the current operation.
@@ -2141,7 +2279,7 @@ export const processData = internalAction({
 - [Convex Actions Documentation](https://docs.convex.dev/functions/actions) — Section on
   awaiting promises
 
-### Pitfall 10: Nested Same-Runtime Action Calls ✅
+#### Pitfall: Nested Same-Runtime Action Calls ✅
 
 **Symptom**: Actions that call other actions via `ctx.runAction()` within the same
 runtime (both Node.js or both V8) silently timeout at ~5 minutes, well before the
@@ -2323,6 +2461,292 @@ problematic nested same-runtime pattern.
 - [Convex Actions Documentation](https://docs.convex.dev/functions/actions)
 
 - [Convex Best Practices](https://docs.convex.dev/understanding/best-practices/)
+
+#### Pitfall: HTTP Action Body Size Surprises
+
+**Symptom**: HTTP actions fail with “Request body exceeds the 20MiB limit” or responses
+are silently truncated when returning large payloads.
+
+**Root Cause**: HTTP actions have a hard-coded 20 MiB limit on both request and response
+bodies. This is not configurable even in self-hosted deployments.
+
+**Example Scenarios**:
+
+1. **Large file uploads via HTTP actions**: Trying to accept file uploads > 20 MiB
+
+2. **Large JSON API responses**: Returning datasets that exceed 20 MiB
+
+3. **Streaming not available**: No way to stream responses to work around the limit
+
+```typescript
+// BAD: Large payload that may exceed limit
+export const getLargeDataset = httpAction(async (ctx, request) => {
+  const data = await ctx.runQuery(internal.getAllRecords); // May return huge dataset
+  return new Response(JSON.stringify(data), {
+    headers: { "Content-Type": "application/json" },
+  }); // Will fail if > 20 MiB
+});
+```
+
+**Workarounds**:
+
+1. **Use File Storage for large files**:
+   ```typescript
+   // GOOD: Use storage for large files
+   export const uploadFile = httpAction(async (ctx, request) => {
+     const file = await request.blob();
+     // File Storage supports up to 2 TB via multipart upload
+     const storageId = await ctx.storage.store(file);
+     return new Response(JSON.stringify({ storageId }));
+   });
+   ```
+
+2. **Paginate large responses**:
+   ```typescript
+   // GOOD: Paginate responses
+   export const getRecords = httpAction(async (ctx, request) => {
+     const url = new URL(request.url);
+     const cursor = url.searchParams.get("cursor");
+     const data = await ctx.runQuery(internal.getRecordsPaginated, {
+       cursor,
+       numItems: 100,
+     });
+     return new Response(JSON.stringify(data));
+   });
+   ```
+
+3. **Return storage URLs for large datasets**:
+   ```typescript
+   // GOOD: Generate file and return download URL
+   export const exportData = httpAction(async (ctx, request) => {
+     const storageId = await ctx.runAction(internal.generateExportFile);
+     const url = await ctx.storage.getUrl(storageId);
+     return new Response(JSON.stringify({ downloadUrl: url }));
+   });
+   ```
+
+**Best Practice**: Design HTTP actions to work within 20 MiB limits.
+Use File Storage for large payloads and pagination for large datasets.
+
+**Sources**:
+
+- [Convex HTTP Actions](https://docs.convex.dev/functions/http-actions)
+
+#### Pitfall: Durable Workflow Journal Limits
+
+**Symptom**: Workflows fail with “Journal too large” errors or exhibit unexpected
+behavior after many steps.
+Workflows that worked in testing fail in production with larger data.
+
+**Root Cause**: Durable workflows store their execution state in a journal that has
+limits:
+
+- **Total journal size**: 8 MiB (includes all step inputs, outputs, and metadata)
+
+- **Per-step data**: 1 MiB (arguments + return value per step)
+
+- **Step count**: No hard limit, but ~50 steps recommended maximum
+
+The journal persists the entire history of the workflow, so even completed steps
+contribute to the size limit.
+
+**Example Scenarios**:
+
+1. **Passing large data between steps**:
+   ```typescript
+   // BAD: Large data flowing through journal
+   const workflow = new Workflow(components.workflow, { workpoolOptions });
+   
+   export const processWorkflow = workflow.define({
+     args: { recordIds: v.array(v.id("records")) },
+     handler: async (step, args) => {
+       // Each step's input/output is persisted
+       const records = await step.runQuery(internal.getRecords, {
+         ids: args.recordIds
+       }); // 500 records × 10KB = 5 MB in journal!
+   
+       const processed = await step.runAction(internal.processAll, {
+         records
+       }); // Another 5 MB in journal for input
+   
+       return processed; // 5 MB more for return value = 15 MB total, exceeds limit
+     },
+   });
+   ```
+
+2. **Too many steps accumulating state**:
+   ```typescript
+   // BAD: Many steps each adding to journal
+   handler: async (step, args) => {
+     const results = [];
+     for (const id of args.ids) { // 100 items = 100 steps
+       const result = await step.runAction(internal.process, { id });
+       results.push(result); // Journal grows with each step
+     }
+     return results;
+   }
+   ```
+
+**Workarounds**:
+
+1. **Pass IDs instead of data**:
+   ```typescript
+   // GOOD: Steps work with IDs, not full data
+   handler: async (step, args) => {
+     // Step 1: Create temporary batch record
+     const batchId = await step.runMutation(internal.createBatch, {
+       recordIds: args.recordIds,
+     });
+   
+     // Step 2: Process batch (action reads full data from DB)
+     await step.runAction(internal.processBatch, { batchId });
+   
+     // Step 3: Get results summary (small)
+     const summary = await step.runQuery(internal.getBatchSummary, { batchId });
+     return summary; // Only small summary in journal
+   }
+   ```
+
+2. **Batch operations to reduce step count**:
+   ```typescript
+   // GOOD: Process in batches, not individual items
+   handler: async (step, args) => {
+     const BATCH_SIZE = 50;
+     const batches = chunkArray(args.ids, BATCH_SIZE);
+   
+     for (let i = 0; i < batches.length; i++) {
+       await step.runAction(internal.processBatch, {
+         batchIndex: i,
+         ids: batches[i],
+       });
+     }
+   }
+   ```
+
+3. **Store intermediate results externally**:
+   ```typescript
+   // GOOD: Use database for large intermediate state
+   handler: async (step, args) => {
+     const workflowRunId = args.runId;
+   
+     // Each step writes to database, not journal
+     await step.runMutation(internal.setIntermediateResult, {
+       runId: workflowRunId,
+       step: "extraction",
+       resultId: extractedDataId, // Store ID, not data
+     });
+   }
+   ```
+
+**Journal Size Estimation**:
+
+| Data Type | Approximate Size |
+| --- | --- |
+| Document ID | ~50 bytes |
+| Small object (5 fields) | ~200-500 bytes |
+| Medium document (20 fields) | ~1-2 KB |
+| Large document | 5-50 KB |
+| Array of 100 IDs | ~5 KB |
+| Array of 100 documents | ~100 KB - 5 MB |
+
+**Best Practice**: Design workflows to pass IDs and references, not full data.
+Keep step count under 50 and total journal under 4 MiB (50% safety margin).
+
+**Sources**:
+
+- [Convex Workflows](https://www.convex.dev/components/workflow)
+
+#### Pitfall: Workflow Retry and Idempotency Confusion
+
+**Symptom**: Workflows produce duplicate side effects (emails sent twice, records
+created multiple times) or exhibit inconsistent behavior on retry.
+
+**Root Cause**: Durable workflows guarantee exactly-once semantics for **steps**, but
+only if you use the journal correctly.
+If an action has side effects before a step boundary, those side effects may execute
+multiple times on retry.
+
+**Example Scenario**:
+
+```typescript
+// BAD: Side effect outside step boundary
+handler: async (step, args) => {
+  // This runs before any step - NOT protected by journal
+  console.log("Starting workflow"); // Will log on every retry
+  sendStartNotification(); // May send multiple notifications!
+
+  // This is protected - runs exactly once
+  const result = await step.runAction(internal.processData, args);
+
+  return result;
+}
+```
+
+**Workarounds**:
+
+1. **All side effects inside steps**:
+   ```typescript
+   // GOOD: All side effects are journal-protected steps
+   handler: async (step, args) => {
+     // Step 1: Send notification (exactly once)
+     await step.runAction(internal.sendStartNotification, {
+       workflowId: args.workflowId,
+     });
+   
+     // Step 2: Process data (exactly once)
+     const result = await step.runAction(internal.processData, args);
+   
+     return result;
+   }
+   ```
+
+2. **Idempotency keys for external services**:
+   ```typescript
+   // GOOD: Use idempotency keys even within steps
+   export const sendEmail = internalAction({
+     handler: async (ctx, args) => {
+       await sendgrid.send({
+         to: args.email,
+         subject: args.subject,
+         body: args.body,
+         // Idempotency key prevents duplicate sends even if
+         // the step is retried due to transient failure
+         idempotencyKey: args.workflowStepId,
+       });
+     },
+   });
+   ```
+
+3. **Track completion status**:
+   ```typescript
+   // GOOD: Check if already completed before running
+   export const chargeCreditCard = internalAction({
+     handler: async (ctx, args) => {
+       // Check if already charged
+       const existing = await ctx.runQuery(internal.getCharge, {
+         orderId: args.orderId,
+       });
+       if (existing) {
+         return existing.chargeId; // Already done, return existing
+       }
+   
+       // Charge and record
+       const chargeId = await stripe.charges.create({ ... });
+       await ctx.runMutation(internal.recordCharge, {
+         orderId: args.orderId,
+         chargeId,
+       });
+       return chargeId;
+     },
+   });
+   ```
+
+**Best Practice**: Treat all code outside `step.*` calls as potentially running multiple
+times. Put all side effects inside steps and use idempotency keys for external services.
+
+**Sources**:
+
+- [Convex Workflows - Durability](https://www.convex.dev/components/workflow)
 
 * * *
 
@@ -2777,10 +3201,10 @@ maintained as a living document.
 
 This research synthesizes information from:
 
-1. **Official Documentation Review**: Convex Developer Hub "Limits" page (updated
+1. **Official Documentation Review**: Convex Developer Hub “Limits” page (updated
    October 2025), covering database, function, transaction, and search quotas
 
-2. **Community Best Practices**: Stack Convex articles including "Queries that Scale"
+2. **Community Best Practices**: Stack Convex articles including “Queries that Scale”
    (February 2024) for practical pagination and indexing guidance
 
 3. **Component Documentation**: Convex Aggregate Component README (November 2025 update)
@@ -2852,9 +3276,13 @@ This document should be reviewed and updated when:
 When verifying limits, check:
 
 - [ ] Official Convex documentation (docs.convex.dev)
+
 - [ ] Source code in `crates/common/src/knobs.rs` for configurable limits
+
 - [ ] Source code in relevant crate files for hard-coded limits
+
 - [ ] Convex changelog for recent changes
+
 - [ ] Community resources (Stack Convex, Discord) for practical observations
 
 ### Related Documents
@@ -2868,8 +3296,8 @@ When verifying limits, check:
 ## Appendix C: Complete Knobs Reference
 
 The following is a categorized list of all configurable knobs with their environment
-variable names and default values. These can be set via environment variables for
-self-hosted deployments.
+variable names and default values.
+These can be set via environment variables for self-hosted deployments.
 
 ### Transaction Limits
 
@@ -2951,8 +3379,8 @@ self-hosted deployments.
 
 ## Appendix D: Hard-Coded Limits Reference
 
-The following limits require code modification to change. They are deeply embedded in
-the value serialization and storage layers.
+The following limits require code modification to change.
+They are deeply embedded in the value serialization and storage layers.
 
 ### Document Structure (`crates/value/src/` and `crates/common/src/document.rs`)
 
