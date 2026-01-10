@@ -4,15 +4,15 @@
 
 **Related**:
 
-- [research-convex-db-limits-best-practices.md](research-convex-db-limits-best-practices.md)
-  — The main document these suggestions apply to
+- [research-convex-limits-best-practices.md](research-convex-limits-best-practices.md) —
+  The main document these suggestions apply to
 
 * * *
 
 ## Document Overview
 
-The `research-convex-db-limits-best-practices.md` document has grown significantly in
-scope and size (2400+ lines).
+The `research-convex-limits-best-practices.md` document has grown significantly in scope
+and size (2400+ lines).
 This document captures structural observations and suggestions for improving its
 organization, accessibility, and maintainability.
 
@@ -183,13 +183,19 @@ Each TODO includes the priority and estimated scope.
 
 ### Documentation Quality
 
-- [ ] **TODO: Add Quick Start Section** (Priority: Medium)
+- [ ] **TODO: Add Architectural Overview Section** (Priority: High)
 
-  - TL;DR summary of most important limits
+  - High-level overview of the Convex platform architecture and how components fit
+    together
 
-  - Common pitfall quick reference
+  - Brief description of each major subsystem (database, functions, storage, scheduling,
+    etc.)
 
-  - “Read this first” for new developers
+  - How limits apply to each architectural component
+
+  - Brief overview of common challenges developers face
+
+  - References to detailed sections later in the document for each component
 
 - [ ] **TODO: Add Interactive Examples** (Priority: Low)
 
@@ -201,59 +207,24 @@ Each TODO includes the priority and estimated scope.
 
 ## Structural Concerns
 
-### 1. Document Length and Accessibility
+### 1. Document Structure and Organization
 
-**Current State**: The document is 2400+ lines, making it difficult to navigate and
-overwhelming for new readers.
+**Approach**: Keep as a single comprehensive document. Document size is acceptable as long
+as it is well-structured, logical, and organized. Navigational aids (TOC, anchors) will be
+handled separately at the rendering layer.
 
-**Concerns**:
+**Key structural priority**: Add Architectural Overview Section (Priority: High)
 
-- New developers may not know where to start
+- Provide a mental model of the Convex platform before diving into limits
 
-- Finding specific information requires extensive scrolling
+- Explain how components fit together (client → backend → database)
 
-- The comprehensive nature is valuable but creates cognitive overload
+- Map each architectural component to its limit categories
 
-- Mobile/tablet reading experience is poor for long documents
+- Brief overview of common challenges to orient readers
 
-**Suggestions**:
-
-1. **Create a Quick Reference Guide** (Priority: High)
-
-   - Extract the most commonly needed limits into a 1-2 page summary
-
-   - Focus on: transaction limits, document limits, execution timeouts, memory limits
-
-   - Include the “Common Error Messages and Solutions” table
-
-   - Link to full document for deeper dives
-
-2. **Consider Document Split** (Priority: Medium)
-
-   - Option A: Keep single document with better navigation (table of contents with
-     anchors)
-
-   - Option B: Split into multiple focused documents:
-
-     - `convex-limits-quick-reference.md` (1-2 pages)
-
-     - `convex-limits-database.md` (transactions, documents, indexes)
-
-     - `convex-limits-execution.md` (timeouts, memory, concurrency)
-
-     - `convex-limits-best-practices.md` (pitfalls, workarounds, patterns)
-
-     - `convex-limits-self-hosted.md` (configuration, knobs)
-
-   - Option C: Keep single doc but add collapsible sections (if rendering supports it)
-
-3. **Add Table of Contents** (Priority: High)
-
-   - Auto-generated or manual TOC at top of document
-
-   - Include anchor links to all major sections
-
-   - Consider “On This Page” sidebar navigation if using docs platform
+- This is NOT a user manual—it's a landscape view helping readers understand where
+  different limits apply
 
 ### 2. Research Methodology Section Placement
 
@@ -410,24 +381,37 @@ If keeping as a single document, reorganize sections for better flow:
 
 ```
 1. Executive Summary (keep short)
-2. Quick Start / TL;DR (NEW - most important limits in one page)
+2. Architectural Overview (NEW)
+   2.1 Platform Architecture - How Convex components fit together
+   2.2 Limit Categories by Component - Where limits apply
+   2.3 Common Challenges Overview - What developers typically encounter
 3. Core Limits Reference
-   3.1 Transaction Limits (read/write)
-   3.2 Document Limits (size, structure)
-   3.3 Execution Limits (timeouts, memory)
-   3.4 Concurrency Limits
-   3.5 Index and Schema Limits
-   3.6 Storage Limits
-   3.7 [NEW SECTIONS PER TODOs]
-4. Function Composition Rules
-5. Common Pitfalls (grouped by category)
-6. Best Practices Checklist
-7. Decision Matrices and Quick Reference Tables
-8. Appendices
-   A. Areas for Convex Improvement (feedback)
-   B. Self-Hosted Configuration Reference
+   3.1 Database Layer
+       - Transaction Limits (read/write)
+       - Document Limits (size, structure)
+       - Index and Schema Limits
+   3.2 Function Execution
+       - Execution Limits (timeouts, memory)
+       - Concurrency Limits
+       - Function Composition Rules
+   3.3 Storage and External
+       - File Storage Limits
+       - HTTP Actions
+       - External API Calls
+   3.4 Scheduling and Background
+       - Scheduled Functions
+       - Cron Jobs
+       - Durable Workflows
+   3.5 Real-time and Subscriptions
+4. Common Pitfalls (grouped by category)
+5. Best Practices Checklist
+6. Decision Matrices and Quick Reference Tables
+7. Appendices
+   A. Self-Hosted Configuration Reference (knobs, env vars)
+   B. Hard-Coded Limits Reference (source code locations)
    C. Source Code Verification Log
-   D. Research Methodology (moved from top)
+   D. Areas for Convex Improvement (feedback)
+   E. Research Methodology
 ```
 
 ### Content to Add
@@ -436,6 +420,7 @@ Per the TODOs already added to the main document:
 
 | Section | Priority | Estimated Lines | Complexity |
 | --- | --- | --- | --- |
+| **Architectural Overview** | High | 150-200 | Medium |
 | **Integrate Backend Limits Implementation Doc** | High | 200-300 | Medium |
 | File Storage Limits | High | 50-100 | Medium |
 | HTTP Actions | High | 50-75 | Medium |
@@ -445,7 +430,6 @@ Per the TODOs already added to the main document:
 | External API Calls | Medium | 30-50 | Low |
 | Schema/Migration | Medium | 50-75 | Medium |
 | Backup/Export | Medium | 50-75 | Medium |
-| Quick Start Section | High | 100-150 | Low |
 
 **Note on Integration**: The `research-convex-backend-limits-implementation.md` document
 contains valuable content that should be merged:
@@ -525,35 +509,38 @@ If this document becomes public-facing:
 
 ## Implementation Priority
 
-### Phase 1: Quick Wins (1-2 hours)
+### Phase 1: Foundation (2-3 hours)
 
 1. ✅ Add TODO comments for missing sections (DONE)
 
 2. ✅ Update title to reflect broader scope (DONE)
 
-3. Add table of contents with anchor links
+3. Add Architectural Overview section (platform architecture, component map, common
+   challenges)
 
 4. Move research methodology to appendix
 
 ### Phase 2: Content Expansion (4-8 hours)
 
-1. Add File Storage Limits section
+1. Integrate Backend Limits Implementation Doc (knobs reference, hard-coded limits)
 
-2. Add HTTP Actions section
+2. Add File Storage Limits section
 
-3. Add Cron Jobs section
+3. Add HTTP Actions section
 
-4. Add Durable Workflows section (summarize from architecture doc)
+4. Add Cron Jobs section
+
+5. Add Durable Workflows section (summarize from architecture doc)
 
 ### Phase 3: Structural Improvements (2-4 hours)
 
-1. Reorganize pitfalls by category
+1. Reorganize limits by component (database, execution, storage, scheduling)
 
-2. Add priority indicators to best practices
+2. Reorganize pitfalls by category
 
-3. Create Quick Start / TL;DR section
+3. Add priority indicators to best practices
 
-4. Consolidate duplicate information
+4. Consolidate duplicate information between prose and tables
 
 ### Phase 4: Polish (2-3 hours)
 
@@ -563,7 +550,7 @@ If this document becomes public-facing:
 
 3. Review for consistency and clarity
 
-4. Add remaining medium/low priority sections
+4. Add remaining medium/low priority sections (subscriptions, external API, etc.)
 
 * * *
 
