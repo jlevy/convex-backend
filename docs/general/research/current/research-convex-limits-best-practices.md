@@ -57,46 +57,96 @@ combining official best practices—selective indexes, pagination, aggregate com
 bounded queries, proper namespacing, and scheduled jobs—with proactive monitoring of
 storage and bandwidth quotas.
 
-## Research Methodology
+## Architectural Overview
 
-### Approach
+This section provides a high-level map of the Convex platform architecture and how limits
+apply to each component. Understanding this landscape helps orient readers to where
+different constraints come into play.
 
-This research synthesizes information from:
+### Platform Architecture
 
-1. **Official Documentation Review**: Convex Developer Hub “Limits” page (updated
-   October 2025), covering database, function, transaction, and search quotas
+Convex is a full-stack backend platform with the following major components:
 
-2. **Community Best Practices**: Stack Convex articles including “Queries that Scale”
-   (February 2024) for practical pagination and indexing guidance
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CLIENT LAYER                                   │
+│  (React/Next.js/React Native apps using convex/react hooks)                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                           CONVEX BACKEND                                    │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │    Queries      │  │   Mutations     │  │    Actions      │             │
+│  │  (read-only,    │  │  (read-write,   │  │  (side effects, │             │
+│  │   reactive)     │  │   transactional)│  │   external APIs)│             │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘             │
+│           │                    │                    │                      │
+│           v                    v                    v                      │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │                      FUNCTION RUNTIME                           │       │
+│  │   V8 Isolate (queries/mutations)  |  Node.js (actions)          │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│           │                    │                    │                      │
+│           v                    v                    v                      │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │                    TRANSACTION LAYER                            │       │
+│  │   Optimistic Concurrency Control (OCC) - automatic retries      │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│           │                                                                │
+│           v                                                                │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │                      DATA LAYER                                 │       │
+│  │   Documents │ Indexes │ File Storage │ Vector Search            │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                        SCHEDULING LAYER                                    │
+│   Scheduled Functions │ Cron Jobs │ Durable Workflows                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-3. **Component Documentation**: Convex Aggregate Component README (November 2025 update)
-   detailing interaction with transaction limits and OCC behavior
+### Where Limits Apply
 
-4. **Real-World Application**: Analysis of common patterns, pitfalls, and production
-   scenarios encountered when building scalable applications
+Each architectural layer has its own set of constraints:
 
-### Primary Sources
+| Layer | Limit Categories | Key Constraints |
+| --- | --- | --- |
+| **Client Layer** | Subscriptions, WebSocket | Concurrent subscriptions, connection limits |
+| **Queries** | Read limits, execution time | 8 MiB read, 16K docs scanned, 1s timeout |
+| **Mutations** | Read + write limits, execution time | 8 MiB read/write, 8K docs written, 1s timeout |
+| **Actions** | Execution time, memory, external calls | 10 min timeout, 512 MB memory, no DB transactions |
+| **V8 Runtime** | Heap memory, syscalls | 64 MB heap, 1000 concurrent syscalls |
+| **Node.js Runtime** | Memory, concurrency | 512 MB Lambda, 8 concurrent external ops |
+| **Transaction Layer** | OCC conflicts, retry limits | Automatic retry on conflict, eventual consistency |
+| **Document Storage** | Size, structure | 1 MiB per doc, 1024 fields, 16 nesting levels |
+| **Indexes** | Count, backfill | 32 indexes per table (docs say; source says 64) |
+| **File Storage** | Upload size, concurrency | Per-file limits, concurrent upload limits |
+| **Scheduled Functions** | Queue depth, execution | Scheduler limits, timeout inheritance |
+| **Cron Jobs** | Schedule frequency, retention | Cron syntax limits, log retention |
 
-- [Convex Production Limits](https://docs.convex.dev/production/state/limits) — Official
-  limits documentation
+### Common Challenges by Component
 
-- [Convex Best Practices](https://docs.convex.dev/understanding/best-practices) —
-  Official best practices guide
+Understanding where developers typically encounter issues:
 
-- [Indexes and Query Performance](https://docs.convex.dev/database/reading-data/indexes)
-  — Index optimization guide
+**Database Operations**
+- Transaction read limit exceeded when scanning large tables without pagination
+- Document size limit hit when storing large blobs or arrays
+- OCC conflicts under high write contention to the same documents
 
-- [Pagination Guide](https://docs.convex.dev/database/pagination) — Official pagination
-  patterns
+**Function Execution**
+- Query/mutation timeout (1s) exceeded for complex operations
+- Action timeout confusion (10 min documented, but 5 min for nested calls)
+- Memory limits hit when processing large datasets in-memory
 
-- [Queries that Scale](https://stack.convex.dev/queries-that-scale) — Community best
-  practices
+**Concurrency and Scaling**
+- OCC retries causing latency spikes under contention
+- Subscription fan-out limits for real-time features
+- Scheduled function queue depth limits
 
-- [Convex Aggregate Component](https://github.com/get-convex/aggregate) — Official
-  aggregation library
+**Cross-Runtime Patterns**
+- Actions calling mutations/queries vs mutations calling actions
+- Nested action timeout behavior (undocumented 5-minute limit)
+- Error context lost across runtime boundaries
 
-- [Convex Helpers](https://github.com/get-convex/convex-helpers) — Additional utilities
-  for pagination and queries
+The sections that follow provide detailed coverage of each limit category, along with
+workarounds and best practices for each challenge area.
 
 * * *
 
@@ -2431,3 +2481,105 @@ The primary areas where Convex documentation and platform behavior could improve
 
 These improvements would significantly reduce developer friction and debugging time for
 Convex applications at scale.
+
+## Appendix B: Writing and Maintenance Process
+
+This appendix documents how this research document was created and how it should be
+maintained as a living document.
+
+### Research Methodology
+
+#### Approach
+
+This research synthesizes information from:
+
+1. **Official Documentation Review**: Convex Developer Hub "Limits" page (updated
+   October 2025), covering database, function, transaction, and search quotas
+
+2. **Community Best Practices**: Stack Convex articles including "Queries that Scale"
+   (February 2024) for practical pagination and indexing guidance
+
+3. **Component Documentation**: Convex Aggregate Component README (November 2025 update)
+   detailing interaction with transaction limits and OCC behavior
+
+4. **Real-World Application**: Analysis of common patterns, pitfalls, and production
+   scenarios encountered when building scalable applications
+
+5. **Source Code Analysis**: Direct examination of the Convex backend source code
+   (`crates/common/src/knobs.rs` and related files) to verify limits and identify
+   undocumented constraints
+
+#### Primary Sources
+
+- [Convex Production Limits](https://docs.convex.dev/production/state/limits) — Official
+  limits documentation
+
+- [Convex Best Practices](https://docs.convex.dev/understanding/best-practices) —
+  Official best practices guide
+
+- [Indexes and Query Performance](https://docs.convex.dev/database/reading-data/indexes)
+  — Index optimization guide
+
+- [Pagination Guide](https://docs.convex.dev/database/pagination) — Official pagination
+  patterns
+
+- [Queries that Scale](https://stack.convex.dev/queries-that-scale) — Community best
+  practices
+
+- [Convex Aggregate Component](https://github.com/get-convex/aggregate) — Official
+  aggregation library
+
+- [Convex Helpers](https://github.com/get-convex/convex-helpers) — Additional utilities
+  for pagination and queries
+
+### Updating This Document
+
+#### When to Update
+
+This document should be reviewed and updated when:
+
+1. **Convex releases new versions**: Check changelog for limit changes
+
+2. **Documentation discrepancies are found**: Report and document any differences
+   between official docs and observed behavior
+
+3. **New platform features are added**: Document limits for new functionality (e.g., new
+   storage types, new runtime options)
+
+4. **Source code changes**: Major backend releases may change default limits in
+   `knobs.rs` or hard-coded values
+
+#### Update Process
+
+1. **Verify changes**: Confirm limit changes against both official docs and source code
+
+2. **Update relevant sections**: Modify the specific limit values and explanations
+
+3. **Update Quick Reference Tables**: Ensure summary tables match prose content
+
+4. **Update verification dates**: Mark when limits were last verified with ✅
+
+5. **Document discrepancies**: Note any differences between docs and source code with 🔍
+
+6. **Update tracking document**: Mark completed items in the companion tracking document
+
+#### Verification Checklist
+
+When verifying limits, check:
+
+- [ ] Official Convex documentation (docs.convex.dev)
+- [ ] Source code in `crates/common/src/knobs.rs` for configurable limits
+- [ ] Source code in relevant crate files for hard-coded limits
+- [ ] Convex changelog for recent changes
+- [ ] Community resources (Stack Convex, Discord) for practical observations
+
+### Related Documents
+
+- [research-convex-limits-best-practices-tracking.md](research-convex-limits-best-practices-tracking.md)
+  — Tracking document with TODOs for coverage expansion and structural improvements
+
+- [research-convex-backend-limits-implementation.md](../../../project/research/current/research-convex-backend-limits-implementation.md)
+  — Detailed source code analysis of limits implementation (to be integrated)
+
+- [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md)
+  — Durable workflows architecture analysis
