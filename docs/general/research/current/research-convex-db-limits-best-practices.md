@@ -15,7 +15,7 @@ and cross-references)
 | 🔒 | **Hard Limit** - Cannot be changed regardless of plan |
 | 🔄 | **Soft Limit** - Can be increased for Professional plan customers (contact support) |
 | ❌ | **Not Allowed** - Operation is prohibited or not supported |
-| 🔍 | **Source Discrepancy** - Source code differs from official docs; see notes |
+| 🔍 | **Undocumented/Discrepancy** - Not in official Convex docs, or source code differs from docs |
 | 🛠️ | **Configurable** - Can be changed via environment variable for self-hosted deployments |
 
 **Notation**: Combinations like "✅ 🔒" mean "Verified Hard Limit"
@@ -329,12 +329,12 @@ For operations that may exceed this limit:
 
 ### 3.1 Logging Limits
 
-**Limit** ✅ 🔒: 256 log lines per function execution
+**Limit** ✅ 🔒 🔍: 256 log lines per function execution
 
 **Source Code Verification**: `MAX_LOG_LINES: usize = 256` in
 `crates/isolate/src/environment/helpers/mod.rs:29`
 
-This limit was previously marked as anecdotal (📝) but is now verified in source code.
+This limit is not documented in official Convex docs but is verified in source code.
 
 **Applies To**: All function types (queries, mutations, actions, HTTP actions)
 
@@ -2137,7 +2137,7 @@ mailto:support@convex.dev.
 |  | Node.js Runtime | 5 MiB | 5 MiB (error msg) | ✅ 🔒 |
 | **Scheduled Functions** | Max functions per mutation | 1,000 | 1,000 | ✅ 🔒 🛠️ |
 |  | Total argument size | 8 MiB | **16 MiB** | ✅ 🔒 🔍 🛠️ |
-| **Logging** | Log lines per execution | 256 | 256 | ✅ 🔒 |
+| **Logging** | Log lines per execution | N/A | 256 | ✅ 🔒 🔍 |
 | **Concurrency (default)** | Queries | 16 | 16 | ✅ 🔄 🛠️ |
 |  | Mutations | 16 | 16 | ✅ 🔄 🛠️ |
 |  | V8/Node/HTTP Actions | 16 | 16 | ✅ 🔄 🛠️ |
