@@ -2652,9 +2652,6 @@ When verifying limits, check:
 - [research-convex-limits-best-practices-tracking.md](research-convex-limits-best-practices-tracking.md)
   — Tracking document with TODOs for coverage expansion and structural improvements
 
-- [research-convex-backend-limits-implementation.md](../../../project/research/current/research-convex-backend-limits-implementation.md)
-  — Original source code analysis (now integrated into this document)
-
 - [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md)
   — Durable workflows architecture analysis
 

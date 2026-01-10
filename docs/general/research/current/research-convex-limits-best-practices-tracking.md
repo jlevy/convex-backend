@@ -64,10 +64,7 @@ Each TODO includes the priority and estimated scope.
 
     - [x] Comparative Analysis (41 configurable vs 22 hard-coded)
 
-  - The implementation doc can now be considered archived/deprecated
-
-  - Reference:
-    `docs/project/research/current/research-convex-backend-limits-implementation.md`
+  - The implementation doc has been deleted (all content now in main document)
 
 - [ ] **TODO: File Storage Limits Section** (Priority: High)
 
