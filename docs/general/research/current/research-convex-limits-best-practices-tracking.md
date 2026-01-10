@@ -28,29 +28,43 @@ Each TODO includes the priority and estimated scope.
 
 ### High Priority (Significant Gaps)
 
-- [ ] **TODO: Integrate Backend Limits Implementation Doc** (Priority: High)
+- [x] **DONE: Integrate Backend Limits Implementation Doc** (Priority: High) ✅
 
-  - Merge content from `research-convex-backend-limits-implementation.md` into this
+  - Merged content from `research-convex-backend-limits-implementation.md` into main
     document
 
-  - The implementation doc contains detailed source code analysis that should be
-    consolidated here
+  - **Integration Status** (completed 2026-01-10):
 
-  - Key content to integrate:
+    | Section | Status | Location in Main Doc |
+    | --- | --- | --- |
+    | Executive Summary | ✅ Covered | Different focus but overlaps |
+    | Research Methodology | ✅ Covered | Appendix B |
+    | Transaction Read/Write Limits | ✅ Covered | Core Limits Reference §1 |
+    | Document Structure Limits | ✅ Covered | Core Limits Reference §2 |
+    | Execution Time/Memory Limits | ✅ Covered | Core Limits Reference §3 |
+    | Index and Schema Limits | ✅ Covered | Core Limits Reference §5 |
+    | Concurrency/Scheduling Limits | ✅ Covered | Core Limits Reference §3 |
+    | OCC Configuration | ✅ Covered | Pitfall 5 section |
+    | Environment Variable Limits | ✅ Covered | Core Limits Reference §6 |
+    | Knobs System Architecture | ✅ Integrated | Configuration System Architecture |
+    | Comparative Analysis | ✅ Integrated | Configuration System Architecture |
+    | Self-Hosted Best Practices | ✅ Integrated | Appendix E |
+    | Appendix A: Knobs Reference | ✅ Integrated | Appendix C |
+    | Appendix B: Hard-Coded Limits | ✅ Integrated | Appendix D |
 
-    - Configuration System Architecture (knobs system explanation)
+  - All content integrated:
 
-    - Complete Knobs Reference (Appendix A from implementation doc)
+    - [x] Configuration System Architecture (knobs system explanation)
 
-    - Hard-Coded Limits Reference (Appendix B from implementation doc)
+    - [x] Complete Knobs Reference (now Appendix C)
 
-    - Self-hosted deployment configuration guidance
+    - [x] Hard-Coded Limits Reference (now Appendix D)
 
-    - Comparative Analysis (configurable vs hard-coded breakdown: 41 configurable, 22
-      hard-coded)
+    - [x] Self-hosted deployment configuration guidance (now Appendix E)
 
-  - After integration, the implementation doc can be deprecated or converted to a
-    changelog
+    - [x] Comparative Analysis (41 configurable vs 22 hard-coded)
+
+  - The implementation doc can now be considered archived/deprecated
 
   - Reference:
     `docs/project/research/current/research-convex-backend-limits-implementation.md`
@@ -183,7 +197,7 @@ Each TODO includes the priority and estimated scope.
 
 ### Documentation Quality
 
-- [ ] **TODO: Add Architectural Overview Section** (Priority: High)
+- [x] **DONE: Add Architectural Overview Section** (Priority: High) ✅
 
   - High-level overview of the Convex platform architecture and how components fit
     together
@@ -196,6 +210,9 @@ Each TODO includes the priority and estimated scope.
   - Brief overview of common challenges developers face
 
   - References to detailed sections later in the document for each component
+
+  - **Added**: Platform Architecture diagram, "Where Limits Apply" table, "Common
+    Challenges by Component" subsection
 
 - [ ] **TODO: Add Interactive Examples** (Priority: Low)
 
