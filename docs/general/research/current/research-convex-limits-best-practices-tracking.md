@@ -66,53 +66,40 @@ Each TODO includes the priority and estimated scope.
 
   - The implementation doc has been deleted (all content now in main document)
 
-- [ ] **TODO: File Storage Limits Section** (Priority: High)
+- [x] **DONE: File Storage Limits Section** (Priority: High) ✅
 
-  - Max file size per upload (currently undocumented in this doc)
+  - Added as Section 8 in Core Limits Reference
 
-  - Concurrent uploads limit: `APPLICATION_MAX_CONCURRENT_UPLOADS` = 4
-    (knobs.rs:845-846)
+  - Covers: concurrent uploads (4), parallel upload parts (8), max file size (2 TB
+    theoretical), multipart buffer (200 MiB)
 
-  - File URL expiration behavior
+  - Includes URL/access patterns, storage quotas reference, key constraints
 
-  - Storage bandwidth accounting
+- [x] **DONE: HTTP Actions Section** (Priority: High) ✅
 
-  - Reference: `crates/file_storage/`, `crates/storage/src/lib.rs`
+  - Added as Section 9 in Core Limits Reference
 
-- [ ] **TODO: HTTP Actions Section** (Priority: High)
+  - Covers: body limits (20 MiB request/response), timeout behavior, concurrency
 
-  - HTTP action body limit: 20 MiB (`HTTP_ACTION_BODY_LIMIT` in
-    `udf/src/http_action.rs:30`)
+  - Includes request/response handling, error messages, CORS notes
 
-  - HTTP action-specific timeout behavior
+- [x] **DONE: Cron Jobs Section** (Priority: High) ✅
 
-  - Request/response size limits
+  - Added as Section 10 in Core Limits Reference
 
-  - CORS and security considerations
+  - Covers: log retention (5 logs), log truncation (1,000 chars), execution behavior
 
-- [ ] **TODO: Cron Jobs Section** (Priority: High)
+  - Includes cron syntax reference, best practices
 
-  - Cron scheduling limits and syntax
+- [x] **DONE: Durable Workflows Section** (Priority: High) ✅
 
-  - Cron log retention (currently 5 logs per cron job)
+  - Added as Section 11 in Core Limits Reference
 
-  - Cron execution behavior and retry semantics
+  - Covers: journal limit (8 MiB), step data (1 MiB), step count guidelines (~50 max)
 
-  - Cron job garbage collection
+  - Includes workflow patterns, memory considerations, key constraints
 
-  - Reference: `crates/model/src/cron_jobs/`
-
-- [ ] **TODO: Durable Workflows Section** (Priority: High)
-
-  - Workflow journal limit: 8 MiB (from `@convex-dev/workflow` package)
-
-  - Step data limit: 1 MiB per step
-
-  - Step count guidelines (~50 steps before replay timeout risk)
-
-  - Fire-and-forget chain patterns for long-running workflows
-
-  - Cross-reference: `research-convex-durable-workflows-architecture.md`
+  - Cross-references `research-convex-durable-workflows-architecture.md`
 
 ### Medium Priority (Partial Coverage)
 
@@ -536,15 +523,15 @@ If this document becomes public-facing:
 
 ### Phase 2: Content Expansion (4-8 hours)
 
-1. Integrate Backend Limits Implementation Doc (knobs reference, hard-coded limits)
+1. ✅ Integrate Backend Limits Implementation Doc (knobs reference, hard-coded limits) (DONE)
 
-2. Add File Storage Limits section
+2. ✅ Add File Storage Limits section (DONE - Section 8)
 
-3. Add HTTP Actions section
+3. ✅ Add HTTP Actions section (DONE - Section 9)
 
-4. Add Cron Jobs section
+4. ✅ Add Cron Jobs section (DONE - Section 10)
 
-5. Add Durable Workflows section (summarize from architecture doc)
+5. ✅ Add Durable Workflows section (DONE - Section 11)
 
 ### Phase 3: Structural Improvements (2-4 hours)
 
