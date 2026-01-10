@@ -6,33 +6,36 @@
 
 **Related**:
 
-- [research-convex-db-limits-best-practices.md](../../../general/research/current/research-convex-db-limits-best-practices.md) -
-  User-facing limits documentation and workarounds
+- [research-convex-db-limits-best-practices.md](../../../general/research/current/research-convex-db-limits-best-practices.md)
+  \- User-facing limits documentation and workarounds
 
 * * *
 
 ## Executive Summary
 
-This research brief analyzes how Convex enforces its platform limits at the source code level,
-identifying which limits are hard-coded constants versus configurable via environment variables
-or the Consul-based knobs system. Understanding this implementation detail is critical for
-organizations considering self-hosted Convex deployments where limits might need adjustment.
+This research brief analyzes how Convex enforces its platform limits at the source code
+level, identifying which limits are hard-coded constants versus configurable via
+environment variables or the Consul-based knobs system.
+Understanding this implementation detail is critical for organizations considering
+self-hosted Convex deployments where limits might need adjustment.
 
 **Key Findings**:
 
-1. **Most operational limits are configurable** via environment variables through the "knobs"
-   system in `crates/common/src/knobs.rs`. This includes transaction limits, execution timeouts,
-   concurrency caps, and memory limits.
+1. **Most operational limits are configurable** via environment variables through the
+   “knobs” system in `crates/common/src/knobs.rs`. This includes transaction limits,
+   execution timeouts, concurrency caps, and memory limits.
 
-2. **Document structure limits are hard-coded** in the value crate and cannot be changed without
-   code modification. This includes document size (1 MiB), field count (1,024), array length
-   (8,192), and nesting depth (16).
+2. **Document structure limits are hard-coded** in the value crate and cannot be changed
+   without code modification.
+   This includes document size (1 MiB), field count (1,024), array length (8,192), and
+   nesting depth (16).
 
-3. **Actual code limits are often more permissive** than documented user-facing limits. For
-   example, the code allows 32,000 documents per transaction read vs. the documented 16,384.
+3. **Actual code limits are often more permissive** than documented user-facing limits.
+   For example, the code allows 32,000 documents per transaction read vs.
+   the documented 16,384.
 
-4. **The knobs system supports runtime reconfiguration** in production via Consul, allowing
-   operators to tune limits without redeploying.
+4. **The knobs system supports runtime reconfiguration** in production via Consul,
+   allowing operators to tune limits without redeploying.
 
 **Research Questions**:
 
@@ -52,19 +55,23 @@ organizations considering self-hosted Convex deployments where limits might need
 
 This research was conducted through:
 
-1. **Static code analysis** of the open-source Convex backend repository, focusing on limit
-   definitions and enforcement points
+1. **Static code analysis** of the open-source Convex backend repository, focusing on
+   limit definitions and enforcement points
 
-2. **Pattern matching** for constants named `MAX_*`, `LIMIT_*`, and `*_SIZE` across Rust crates
+2. **Pattern matching** for constants named `MAX_*`, `LIMIT_*`, and `*_SIZE` across Rust
+   crates
 
-3. **Trace analysis** of limit enforcement from constant definition through to error generation
+3. **Trace analysis** of limit enforcement from constant definition through to error
+   generation
 
 4. **Comparison** with documented user-facing limits to identify discrepancies
 
 ### Sources
 
 - Convex backend source code (`crates/` directory)
-- Specifically: `common`, `value`, `database`, `isolate`, `model`, `udf`, `vector`, `search`
+
+- Specifically: `common`, `value`, `database`, `isolate`, `model`, `udf`, `vector`,
+  `search`
 
 * * *
 
@@ -76,13 +83,15 @@ This research was conducted through:
 
 **Status**: ✅ Complete
 
-Convex uses a centralized configuration system called "knobs" defined in
+Convex uses a centralized configuration system called “knobs” defined in
 `crates/common/src/knobs.rs`. This system provides:
 
-- **Environment variable override**: All knobs can be set via environment variables for local
-  development and self-hosted deployments
-- **Consul integration**: Production deployments can modify knobs at runtime via Consul at
-  `conductor/<partition-id>/knobs/<knob-name>`
+- **Environment variable override**: All knobs can be set via environment variables for
+  local development and self-hosted deployments
+
+- **Consul integration**: Production deployments can modify knobs at runtime via Consul
+  at `conductor/<partition-id>/knobs/<knob-name>`
+
 - **Type-safe defaults**: Each knob has a compile-time default value
 
 **Implementation Pattern**:
@@ -94,8 +103,9 @@ pub static TRANSACTION_MAX_READ_SIZE_BYTES: LazyLock<usize> = LazyLock::new(|| {
 });
 ```
 
-**Assessment**: The knobs system is well-designed for operational flexibility. Self-hosted
-deployments can override any knob via environment variables without code changes.
+**Assessment**: The knobs system is well-designed for operational flexibility.
+Self-hosted deployments can override any knob via environment variables without code
+changes.
 
 * * *
 
@@ -106,24 +116,25 @@ deployments can override any knob via environment variables without code changes
 **Status**: ✅ Complete
 
 | Limit | Code Value | Documented Value | Location | Configurable |
-|-------|------------|------------------|----------|--------------|
+| --- | --- | --- | --- | --- |
 | Max documents read | 32,000 | 16,384 | `knobs.rs:351-352` | Yes (`TRANSACTION_MAX_READ_SIZE_ROWS`) |
 | Max bytes read | 16 MiB | 8 MiB | `knobs.rs:355-357` | Yes (`TRANSACTION_MAX_READ_SIZE_BYTES`) |
 | Max read set intervals | 4,096 | 4,096 | `knobs.rs:360-361` | Yes (`TRANSACTION_MAX_READ_SET_INTERVALS`) |
 
 **Enforcement Location**: `crates/database/src/reads.rs`
 
-**Rationale**: The documented limits (8 MiB, 16,384 docs) are more conservative than the code
-defaults. This provides headroom for Convex Cloud to enforce stricter limits on certain plans
-while the codebase supports higher values. The read set interval limit of 4,096 corresponds to
-the maximum `db.get()`/`db.query()` calls per transaction.
+**Rationale**: The documented limits (8 MiB, 16,384 docs) are more conservative than the
+code defaults. This provides headroom for Convex Cloud to enforce stricter limits on
+certain plans while the codebase supports higher values.
+The read set interval limit of 4,096 corresponds to the maximum `db.get()`/`db.query()`
+calls per transaction.
 
 #### 2.2 Write Limits
 
 **Status**: ✅ Complete
 
 | Limit | Code Value | Documented Value | Location | Configurable |
-|-------|------------|------------------|----------|--------------|
+| --- | --- | --- | --- | --- |
 | Max documents written | 16,000 | 8,192 | `knobs.rs:208-209` | Yes (`TRANSACTION_MAX_NUM_USER_WRITES`) |
 | Max bytes written | 16 MiB | 8 MiB | `knobs.rs:212-214` | Yes (`TRANSACTION_MAX_USER_WRITE_SIZE_BYTES`) |
 | Max system writes | 40,000 | N/A | `knobs.rs:243-244` | Yes (`TRANSACTION_MAX_SYSTEM_NUM_WRITES`) |
@@ -131,11 +142,12 @@ the maximum `db.get()`/`db.query()` calls per transaction.
 
 **Enforcement Location**: `crates/database/src/writes.rs:288-307`
 
-**Rationale**: System write limits are higher than user limits to accommodate internal operations
-that generate multiple system documents per user write (e.g., index entries, metadata).
+**Rationale**: System write limits are higher than user limits to accommodate internal
+operations that generate multiple system documents per user write (e.g., index entries,
+metadata).
 
-**Key Constraint**: When modifying `TRANSACTION_MAX_NUM_USER_WRITES`, you must also update
-`MAX_INSERT_SIZE` in `mysql/src/lib.rs` and `postgres/src/lib.rs` to match.
+**Key Constraint**: When modifying `TRANSACTION_MAX_NUM_USER_WRITES`, you must also
+update `MAX_INSERT_SIZE` in `mysql/src/lib.rs` and `postgres/src/lib.rs` to match.
 
 * * *
 
@@ -146,7 +158,7 @@ that generate multiple system documents per user write (e.g., index entries, met
 **Status**: ✅ Complete
 
 | Limit | Value | Location | Configurable |
-|-------|-------|----------|--------------|
+| --- | --- | --- | --- |
 | Max document size | 1 MiB (1,048,576 bytes) | `common/src/document.rs:101` | **No** (hard-coded) |
 | Max fields per document | 1,024 | `value/src/object.rs:30` | **No** (hard-coded) |
 | Max nesting depth (user) | 16 levels | `common/src/document.rs:102` | **No** (hard-coded) |
@@ -158,20 +170,26 @@ that generate multiple system documents per user write (e.g., index entries, met
 **Enforcement Locations**:
 
 - Document size: `common/src/document.rs:599-614` (`check_user_size()`)
+
 - Object fields: `value/src/object.rs:66-75` (`TryFrom<BTreeMap>`)
+
 - Array length: `value/src/array.rs:70-79` (`TryFrom<Vec>`)
+
 - Nesting: `common/src/document.rs:456-459` (`validate()`)
 
-**Assessment**: These limits are deeply embedded in the value serialization layer. Changing them
-would require modifications to:
+**Assessment**: These limits are deeply embedded in the value serialization layer.
+Changing them would require modifications to:
 
 1. The constant definitions
+
 2. Serialization/deserialization logic
+
 3. Storage layer assumptions
+
 4. Client SDK validation
 
-**Rationale**: Document structure limits ensure predictable memory usage during serialization
-and prevent pathological cases that could impact system stability.
+**Rationale**: Document structure limits ensure predictable memory usage during
+serialization and prevent pathological cases that could impact system stability.
 
 * * *
 
@@ -182,22 +200,33 @@ and prevent pathological cases that could impact system stability.
 **Status**: ✅ Complete
 
 | Limit | Value | Location | Configurable |
-|-------|-------|----------|--------------|
+| --- | --- | --- | --- |
 | Query/mutation user timeout | 1 second | `knobs.rs:692-693` | Yes (`DATABASE_UDF_USER_TIMEOUT_SECONDS`) |
 | Query/mutation system timeout | 15 seconds | `knobs.rs:703-704` | Yes (`DATABASE_UDF_SYSTEM_TIMEOUT_SECONDS`) |
 | Action user timeout | 600 seconds (10 min) | `knobs.rs:119-120` | Yes (`ACTIONS_USER_TIMEOUT_SECS`) |
 | V8 action system timeout | 300 seconds (5 min) | `knobs.rs:745-746` | Yes (`V8_ACTION_SYSTEM_TIMEOUT_SECONDS`) |
+| HTTP server request timeout | 300 seconds (5 min) | `knobs.rs:1315-1316` | Yes (`HTTP_SERVER_TIMEOUT_SECONDS`) |
 | Code analysis timeout | 2 seconds | `knobs.rs:707-708` | Yes (`ISOLATE_ANALYZE_USER_TIMEOUT_SECONDS`) |
 
-**Rationale for System Timeout**: The 15-second system timeout accounts for up to 4,096 queries
-at ~1.6ms average = 6.4 seconds, plus buffer for network latency and processing overhead.
+**Rationale for System Timeout**: The 15-second system timeout accounts for up to 4,096
+queries at ~1.6ms average = 6.4 seconds, plus buffer for network latency and processing
+overhead.
+
+**🔍 HTTP Server Request Timeout**: This timeout applies to all HTTP requests to the
+backend, including Node.js action callbacks.
+When a Node.js action calls `ctx.runAction()`, the callback goes through the HTTP layer
+and is subject to this 300-second timeout.
+This is enforced via Tower’s `TimeoutLayer` in `crates/common/src/http/mod.rs:655`.
+**Note**: This limit is not documented in official Convex documentation but can cause
+nested Node.js action calls to fail at 5 minutes instead of the expected 10-minute
+action timeout.
 
 #### 4.2 Memory Limits
 
 **Status**: ✅ Complete
 
 | Limit | Value | Location | Configurable |
-|-------|-------|----------|--------------|
+| --- | --- | --- | --- |
 | V8 user heap size | 64 MB | `knobs.rs:849-850` | Yes (`ISOLATE_MAX_USER_HEAP_SIZE`) |
 | V8 heap extra size | 32 MB | `knobs.rs:854-855` | Yes (`ISOLATE_MAX_HEAP_EXTRA_SIZE`) |
 | V8 ArrayBuffer total | 64 MB | `knobs.rs:858-859` | Yes (`ISOLATE_MAX_ARRAY_BUFFER_TOTAL_SIZE`) |
@@ -209,7 +238,9 @@ at ~1.6ms average = 6.4 seconds, plus buffer for network latency and processing 
 **Assessment**: Memory limits are fully configurable but require careful consideration:
 
 - Higher V8 heap limits may cause memory pressure on shared infrastructure
+
 - Lambda memory limits affect AWS billing
+
 - Self-hosted deployments can safely increase these based on available resources
 
 #### 4.3 Argument and Result Size Limits
@@ -217,14 +248,15 @@ at ~1.6ms average = 6.4 seconds, plus buffer for network latency and processing 
 **Status**: ✅ Complete
 
 | Limit | Value | Location | Configurable |
-|-------|-------|----------|--------------|
+| --- | --- | --- | --- |
 | Function args size | 16 MiB | `knobs.rs:223-225` | Yes (`FUNCTION_MAX_ARGS_SIZE`) |
 | Function result size | 16 MiB | `knobs.rs:228-230` | Yes (`FUNCTION_MAX_RESULT_SIZE`) |
 | Node.js args size | 5 MiB | `node_executor/src/executor.rs:132-134` | **No** (hard-coded message) |
 | HTTP action body | 20 MiB | `udf/src/http_action.rs:30` | **No** (hard-coded) |
 
-**Note**: The Node.js 5 MiB limit is documented in an error message but the actual enforcement
-may use the general function args limit. The HTTP action body limit is separate and hard-coded.
+**Note**: The Node.js 5 MiB limit is documented in an error message but the actual
+enforcement may use the general function args limit.
+The HTTP action body limit is separate and hard-coded.
 
 * * *
 
@@ -235,7 +267,7 @@ may use the general function args limit. The HTTP action body limit is separate 
 **Status**: ✅ Complete
 
 | Limit | Code Value | Documented Value | Location | Configurable |
-|-------|------------|------------------|----------|--------------|
+| --- | --- | --- | --- | --- |
 | Max indexes per table | 64 | 32 | `common/src/schemas/mod.rs:64` | **No** (hard-coded) |
 | Max fields per index | 16 | 16 | `bootstrap_model/index/mod.rs:42` | **No** (hard-coded) |
 | Max text index filters | 16 | 16 | `bootstrap_model/index/mod.rs:43` | **No** (hard-coded) |
@@ -243,15 +275,15 @@ may use the general function args limit. The HTTP action body limit is separate 
 
 **Enforcement**: `crates/database/src/bootstrap_model/index.rs:129-130`
 
-**Discrepancy**: The code allows 64 indexes per table, but documentation says 32. The 64 limit
-is the total across all index types (database, text, vector).
+**Discrepancy**: The code allows 64 indexes per table, but documentation says 32. The 64
+limit is the total across all index types (database, text, vector).
 
 #### 5.2 Schema Limits
 
 **Status**: ✅ Complete
 
 | Limit | Value | Location | Configurable |
-|-------|-------|----------|--------------|
+| --- | --- | --- | --- |
 | Max tables per deployment | 10,000 | `database/src/bootstrap_model/table.rs:62` | **No** (hard-coded) |
 | Max user modules | 4,096 | `knobs.rs:1329-1330` | Yes (`MAX_USER_MODULES`) |
 | Max push size | 200 MB | `knobs.rs:1320-1321` | Yes (`MAX_PUSH_BYTES`) |
@@ -261,7 +293,7 @@ is the total across all index types (database, text, vector).
 **Status**: ✅ Complete
 
 | Limit | Value | Location | Configurable |
-|-------|-------|----------|--------------|
+| --- | --- | --- | --- |
 | Text index size soft limit | 10 MiB | `knobs.rs:535-536` | Yes (`SEARCH_INDEX_SIZE_SOFT_LIMIT`) |
 | Text index size hard limit | 100 MiB | `knobs.rs:420-421` | Yes (`SEARCH_INDEX_SIZE_HARD_LIMIT`) |
 | Vector index size soft limit | 30 MiB | `knobs.rs:649-650` | Yes (`VECTOR_INDEX_SIZE_SOFT_LIMIT`) |
@@ -279,7 +311,7 @@ is the total across all index types (database, text, vector).
 **Status**: ✅ Complete
 
 | Limit | Default | Location | Configurable |
-|-------|---------|----------|--------------|
+| --- | --- | --- | --- |
 | Base concurrency (all types) | 16 | `knobs.rs:760` | N/A (base constant) |
 | Concurrent queries | 16 | `knobs.rs:768-773` | Yes (`APPLICATION_MAX_CONCURRENT_QUERIES`) |
 | Concurrent mutations | 16 | `knobs.rs:781-786` | Yes (`APPLICATION_MAX_CONCURRENT_MUTATIONS`) |
@@ -288,33 +320,35 @@ is the total across all index types (database, text, vector).
 | Concurrent HTTP actions | 16 | `knobs.rs:832-841` | Yes (`APPLICATION_MAX_CONCURRENT_HTTP_ACTIONS`) |
 | HTTP server concurrent | 1,024 | `knobs.rs:203-204` | Yes (`HTTP_SERVER_MAX_CONCURRENT_REQUESTS`) |
 
-**Note**: These defaults are for the "basic plan". Production Convex Cloud overrides these via
-the "big brain" service for professional plan customers (256 queries/mutations, 1000 Node actions).
+**Note**: These defaults are for the “basic plan”.
+Production Convex Cloud overrides these via the “big brain” service for professional
+plan customers (256 queries/mutations, 1000 Node actions).
 
 #### 6.2 Scheduling Limits
 
 **Status**: ✅ Complete
 
 | Limit | Value | Location | Configurable |
-|-------|-------|----------|--------------|
+| --- | --- | --- | --- |
 | Max scheduled per mutation | 1,000 | `knobs.rs:254-255` | Yes (`TRANSACTION_MAX_NUM_SCHEDULED`) |
 | Max scheduled arg size (single) | 1 MiB | `knobs.rs:263-265` | Yes (`MAX_SCHEDULED_JOB_ARGUMENT_SIZE_BYTES`) |
 | Max scheduled args total | 16 MiB | `knobs.rs:269-275` | Yes (`TRANSACTION_MAX_SCHEDULED_TOTAL_ARGUMENT_SIZE_BYTES`) |
 | Scheduled job parallelism | 10 | `knobs.rs:281-282` | Yes (`SCHEDULED_JOB_EXECUTION_PARALLELISM`) |
 | Scheduled job retention | 7 days | `knobs.rs:315-320` | Yes (`SCHEDULED_JOB_RETENTION`) |
 
-**Enforcement**: `crates/model/src/scheduled_jobs/mod.rs:181-211` (`check_scheduling_limits()`)
+**Enforcement**: `crates/model/src/scheduled_jobs/mod.rs:181-211`
+(`check_scheduling_limits()`)
 
 #### 6.3 Logging Limits
 
 **Status**: ✅ Complete
 
 | Limit | Value | Location | Configurable |
-|-------|-------|----------|--------------|
+| --- | --- | --- | --- |
 | Max log lines per execution | 256 | `isolate/src/environment/helpers/mod.rs:29` | **No** (hard-coded) |
 
-**Enforcement**: Logs are truncated silently after 256 lines with a message:
-"Log overflow (maximum 256). Remaining log lines omitted."
+**Enforcement**: Logs are truncated silently after 256 lines with a message: “Log
+overflow (maximum 256). Remaining log lines omitted.”
 
 * * *
 
@@ -323,13 +357,14 @@ the "big brain" service for professional plan customers (256 queries/mutations, 
 **Status**: ✅ Complete
 
 | Setting | Value | Location | Configurable |
-|---------|-------|----------|--------------|
+| --- | --- | --- | --- |
 | Max OCC retries | 4 | `knobs.rs:146-147` | Yes (`UDF_EXECUTOR_OCC_MAX_RETRIES`) |
 | Initial OCC backoff | 10ms | `knobs.rs:150-151` | Yes (`UDF_EXECUTOR_OCC_INITIAL_BACKOFF_MS`) |
 | Max OCC backoff | 2,000ms | `knobs.rs:154-155` | Yes (`UDF_EXECUTOR_OCC_MAX_BACKOFF_MS`) |
 
-**Assessment**: OCC parameters are fully tunable. Self-hosted deployments with lower contention
-could reduce retries; high-contention scenarios might benefit from longer backoffs.
+**Assessment**: OCC parameters are fully tunable.
+Self-hosted deployments with lower contention could reduce retries; high-contention
+scenarios might benefit from longer backoffs.
 
 * * *
 
@@ -338,13 +373,13 @@ could reduce retries; high-contention scenarios might benefit from longer backof
 **Status**: ✅ Complete
 
 | Limit | Value | Location | Configurable |
-|-------|-------|----------|--------------|
+| --- | --- | --- | --- |
 | Max environment variables | 1,000 | `knobs.rs:1537-1538` | Yes (`ENV_VAR_LIMIT`) |
 | Max env var name length | 40 chars | `types/environment_variables.rs:66` | **No** (hard-coded) |
 | Max env var value length | 8,192 bytes | `types/environment_variables.rs:69` | **No** (hard-coded) |
 
-**Note**: The documented limit of 100 environment variables is more conservative than the code
-default of 1,000.
+**Note**: The documented limit of 100 environment variables is more conservative than
+the code default of 1,000.
 
 * * *
 
@@ -353,10 +388,10 @@ default of 1,000.
 ### Configurable vs Hard-Coded Limits
 
 | Category | Configurable | Hard-Coded | Total |
-|----------|--------------|------------|-------|
+| --- | --- | --- | --- |
 | Transaction limits | 6 | 0 | 6 |
 | Document structure | 0 | 7 | 7 |
-| Execution time | 5 | 0 | 5 |
+| Execution time | 6 | 0 | 6 |
 | Memory limits | 5 | 0 | 5 |
 | Arg/result sizes | 2 | 2 | 4 |
 | Index limits | 0 | 6 | 6 |
@@ -367,14 +402,15 @@ default of 1,000.
 | Logging | 0 | 1 | 1 |
 | OCC | 3 | 0 | 3 |
 | Env vars | 1 | 2 | 3 |
-| **Total** | **40** | **22** | **62** |
+| **Total** | **41** | **22** | **63** |
 
-**Summary**: ~65% of limits are configurable via environment variables without code changes.
+**Summary**: ~65% of limits are configurable via environment variables without code
+changes.
 
 ### Code Defaults vs Documented Limits
 
 | Limit | Code Default | Documented | Ratio |
-|-------|--------------|------------|-------|
+| --- | --- | --- | --- |
 | Max docs read | 32,000 | 16,384 | 1.95x |
 | Max bytes read | 16 MiB | 8 MiB | 2x |
 | Max docs written | 16,000 | 8,192 | 1.95x |
@@ -382,8 +418,9 @@ default of 1,000.
 | Max indexes per table | 64 | 32 | 2x |
 | Max env vars | 1,000 | 100 | 10x |
 
-**Assessment**: Convex Cloud likely applies stricter limits for free/starter plans while the
-codebase supports higher values for professional/enterprise customers and self-hosted deployments.
+**Assessment**: Convex Cloud likely applies stricter limits for free/starter plans while
+the codebase supports higher values for professional/enterprise customers and
+self-hosted deployments.
 
 * * *
 
@@ -393,9 +430,13 @@ codebase supports higher values for professional/enterprise customers and self-h
 
 These limits can be safely increased based on available resources:
 
-- **Concurrency limits** (`APPLICATION_MAX_CONCURRENT_*`): Scale based on CPU cores and memory
+- **Concurrency limits** (`APPLICATION_MAX_CONCURRENT_*`): Scale based on CPU cores and
+  memory
+
 - **Memory limits** (`ISOLATE_MAX_USER_HEAP_SIZE`): Scale based on available RAM
+
 - **Execution timeouts**: Increase if running longer batch operations
+
 - **Transaction limits**: Increase for larger batch operations if storage can handle it
 
 ### 2. Limits Requiring Caution
@@ -403,7 +444,9 @@ These limits can be safely increased based on available resources:
 These require careful consideration before changing:
 
 - **Search index hard limits**: Affects memory usage during search operations
+
 - **OCC retry counts**: Too many retries can cause cascading failures under load
+
 - **HTTP concurrent requests**: May overwhelm downstream services
 
 ### 3. Limits Not Recommended to Change
@@ -411,7 +454,9 @@ These require careful consideration before changing:
 These are fundamental to system correctness:
 
 - **Document structure limits**: Deeply embedded in serialization
+
 - **Max search/vector results**: Query planning depends on these
+
 - **Index field counts**: Storage format assumptions
 
 ### 4. Environment Variable Configuration
@@ -442,14 +487,16 @@ export APPLICATION_MAX_CONCURRENT_V8_ACTIONS=64
 
 ## Open Research Questions
 
-1. **Storage quotas**: How are database storage and bandwidth quotas enforced? These appear to
-   be managed externally (billing/usage tracking) rather than as hard limits in the backend code.
+1. **Storage quotas**: How are database storage and bandwidth quotas enforced?
+   These appear to be managed externally (billing/usage tracking) rather than as hard
+   limits in the backend code.
 
-2. **Plan-based limits**: How does the "big brain" service override default concurrency limits
-   for professional plan customers?
+2. **Plan-based limits**: How does the “big brain” service override default concurrency
+   limits for professional plan customers?
 
-3. **Vector index document limits**: The documented 100,000 document limit per vector index
-   wasn't found as a code constant - it may be enforced through index size limits instead.
+3. **Vector index document limits**: The documented 100,000 document limit per vector
+   index wasn’t found as a code constant - it may be enforced through index size limits
+   instead.
 
 * * *
 
@@ -457,27 +504,30 @@ export APPLICATION_MAX_CONCURRENT_V8_ACTIONS=64
 
 ### Summary
 
-Self-hosted Convex deployments have significant flexibility to adjust operational limits via
-environment variables. The knobs system provides a well-designed configuration interface that
-supports both local development overrides and production runtime tuning.
+Self-hosted Convex deployments have significant flexibility to adjust operational limits
+via environment variables.
+The knobs system provides a well-designed configuration interface that supports both
+local development overrides and production runtime tuning.
 
 ### Recommended Approach
 
 1. **Start with defaults**: The default limits are well-tuned for general use cases
 
-2. **Monitor before changing**: Use metrics to identify actual bottlenecks before adjusting limits
+2. **Monitor before changing**: Use metrics to identify actual bottlenecks before
+   adjusting limits
 
 3. **Test thoroughly**: Changes to limits can have cascading effects on system behavior
 
-4. **Document changes**: Maintain a configuration file with explanations for any modified limits
+4. **Document changes**: Maintain a configuration file with explanations for any
+   modified limits
 
 ### Alternative Approaches
 
-- **Code modification**: For hard-coded limits, fork and modify the relevant constants. This
-  requires maintaining a custom build and careful testing of affected subsystems.
+- **Code modification**: For hard-coded limits, fork and modify the relevant constants.
+  This requires maintaining a custom build and careful testing of affected subsystems.
 
-- **Hybrid approach**: Use configurable limits for operational tuning while accepting hard-coded
-  structural limits as part of the platform contract.
+- **Hybrid approach**: Use configurable limits for operational tuning while accepting
+  hard-coded structural limits as part of the platform contract.
 
 * * *
 
@@ -486,28 +536,34 @@ supports both local development overrides and production runtime tuning.
 ### Source Code Locations
 
 - `crates/common/src/knobs.rs` - Central configuration system (1,539 lines)
+
 - `crates/common/src/document.rs` - Document size and structure limits
+
 - `crates/value/src/` - Value type limits (array, object, string)
+
 - `crates/database/src/` - Transaction and index limit enforcement
+
 - `crates/isolate/src/` - V8 execution limits
+
 - `crates/model/src/` - Schema and scheduling limits
 
 ### Related Documentation
 
 - [Convex Production Limits](https://docs.convex.dev/production/state/limits)
+
 - [Self-Hosting Documentation](https://docs.convex.dev/self-hosting)
 
 * * *
 
 ## Appendix A: Complete Knobs Reference
 
-The following is a categorized list of all configurable knobs with their environment variable
-names and default values:
+The following is a categorized list of all configurable knobs with their environment
+variable names and default values:
 
 ### Transaction Limits
 
 | Knob | Env Var | Default |
-|------|---------|---------|
+| --- | --- | --- |
 | `TRANSACTION_MAX_READ_SIZE_ROWS` | `TRANSACTION_MAX_READ_SIZE_ROWS` | 32,000 |
 | `TRANSACTION_MAX_READ_SIZE_BYTES` | `TRANSACTION_MAX_READ_SIZE_BYTES` | 16 MiB |
 | `TRANSACTION_MAX_READ_SET_INTERVALS` | `TRANSACTION_MAX_READ_SET_INTERVALS` | 4,096 |
@@ -518,16 +574,17 @@ names and default values:
 ### Execution Limits
 
 | Knob | Env Var | Default |
-|------|---------|---------|
+| --- | --- | --- |
 | `DATABASE_UDF_USER_TIMEOUT` | `DATABASE_UDF_USER_TIMEOUT_SECONDS` | 1s |
 | `DATABASE_UDF_SYSTEM_TIMEOUT` | `DATABASE_UDF_SYSTEM_TIMEOUT_SECONDS` | 15s |
 | `ACTION_USER_TIMEOUT` | `ACTIONS_USER_TIMEOUT_SECS` | 600s |
 | `V8_ACTION_SYSTEM_TIMEOUT` | `V8_ACTION_SYSTEM_TIMEOUT_SECONDS` | 300s |
+| `HTTP_SERVER_TIMEOUT_DURATION` | `HTTP_SERVER_TIMEOUT_SECONDS` | 300s 🔍 |
 
 ### Memory Limits
 
 | Knob | Env Var | Default |
-|------|---------|---------|
+| --- | --- | --- |
 | `ISOLATE_MAX_USER_HEAP_SIZE` | `ISOLATE_MAX_USER_HEAP_SIZE` | 64 MB |
 | `ISOLATE_MAX_HEAP_EXTRA_SIZE` | `ISOLATE_MAX_HEAP_EXTRA_SIZE` | 32 MB |
 | `ISOLATE_MAX_ARRAY_BUFFER_TOTAL_SIZE` | `ISOLATE_MAX_ARRAY_BUFFER_TOTAL_SIZE` | 64 MB |
@@ -537,7 +594,7 @@ names and default values:
 ### Concurrency Limits
 
 | Knob | Env Var | Default |
-|------|---------|---------|
+| --- | --- | --- |
 | `APPLICATION_MAX_CONCURRENT_QUERIES` | `APPLICATION_MAX_CONCURRENT_QUERIES` | 16 |
 | `APPLICATION_MAX_CONCURRENT_MUTATIONS` | `APPLICATION_MAX_CONCURRENT_MUTATIONS` | 16 |
 | `APPLICATION_MAX_CONCURRENT_V8_ACTIONS` | `APPLICATION_MAX_CONCURRENT_V8_ACTIONS` | 16 |
@@ -548,7 +605,7 @@ names and default values:
 ### Search Index Limits
 
 | Knob | Env Var | Default |
-|------|---------|---------|
+| --- | --- | --- |
 | `SEARCH_INDEX_SIZE_SOFT_LIMIT` | `SEARCH_INDEX_SIZE_SOFT_LIMIT` | 10 MiB |
 | `TEXT_INDEX_SIZE_HARD_LIMIT` | `SEARCH_INDEX_SIZE_HARD_LIMIT` | 100 MiB |
 | `VECTOR_INDEX_SIZE_SOFT_LIMIT` | `VECTOR_INDEX_SIZE_SOFT_LIMIT` | 30 MiB |
