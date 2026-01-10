@@ -955,6 +955,216 @@ memory. But they do compete for:
 
 - Function call quotas (monthly limit)
 
+### 8. File Storage Limits
+
+File storage in Convex is separate from document storage and has its own constraints.
+
+**Upload Limits** ✅ 🔒 🛠️:
+
+| Limit | Value | Source Location | Status |
+| --- | --- | --- | --- |
+| **Concurrent uploads (deployment)** | 4 | `knobs.rs:845-846` | ✅ 🛠️ |
+| **Parallel upload parts (internal)** | 8 | `storage/src/lib.rs:92` | ✅ |
+| **Max file size (theoretical)** | 2 TB | S3 multipart limit (10,000 parts × 200 MiB) | ✅ |
+| **Multipart upload buffer** | 200 MiB | `knobs.rs:1418-1420` | ✅ 🛠️ |
+
+**URL and Access**:
+
+| Behavior | Details | Status |
+| --- | --- | --- |
+| **Signed URL expiration** | Configurable (typically short-lived for security) | ✅ |
+| **Presigned upload URLs** | Generated via `storage.generateUploadUrl()` | ✅ |
+| **File retrieval** | Via `storage.getUrl()` returning signed URLs | ✅ |
+
+**Storage Quotas** (see Section 4 for plan-specific limits):
+
+- File storage is billed separately from database storage
+- Bandwidth includes file downloads
+- Files are stored in S3-compatible object storage
+
+**Key Constraints**:
+
+- `APPLICATION_MAX_CONCURRENT_UPLOADS` limits simultaneous file uploads during deployment
+- Large files use multipart upload automatically
+- File metadata (size, content type) is stored alongside the file
+
+**Sources**:
+
+- `crates/storage/src/lib.rs` — Storage implementation
+- `crates/file_storage/` — File storage API
+- `crates/common/src/knobs.rs:845-846, 1416-1420` — Configurable limits
+
+### 9. HTTP Actions Limits
+
+HTTP actions (`httpAction` in `convex/http.ts`) have specific limits for request/response
+handling.
+
+**Body Size Limits** ✅ 🔒:
+
+| Limit | Value | Source Location | Status |
+| --- | --- | --- | --- |
+| **Request body limit** | 20 MiB | `udf/src/http_action.rs:30` | ✅ 🔒 |
+| **Response body limit** | 20 MiB | `udf/src/http_action.rs:30` | ✅ 🔒 |
+| **Multipart form body** | 20 MiB | `isolate/src/environment/action/stream.rs:21` | ✅ 🔒 |
+
+**Timeout Behavior**:
+
+HTTP actions inherit the standard action timeout (10 minutes), but are also subject to:
+
+| Timeout | Value | Affects | Status |
+| --- | --- | --- | --- |
+| **Action user timeout** | 10 minutes | Total execution time | ✅ 🛠️ |
+| **HTTP server timeout** | 5 minutes | Request processing | ✅ 🛠️ 🔍 |
+
+**Concurrency** ✅ 🔄 🛠️:
+
+| Limit | Default | Professional | Env Var |
+| --- | --- | --- | --- |
+| **Concurrent HTTP actions** | 16 | 256+ | `APPLICATION_MAX_CONCURRENT_HTTP_ACTIONS` |
+
+**Request Handling**:
+
+- Headers are normalized (lowercase keys)
+- Body is streamed (not buffered entirely in memory for large requests)
+- CORS must be handled manually in your HTTP action code
+
+**Response Handling**:
+
+- Responses exceeding 20 MiB trigger `HttpResponseTooLarge` error
+- Streaming responses are supported but still subject to total size limit
+- Content-Type must be set explicitly
+
+**Error Messages**:
+
+| Error | Cause | Solution |
+| --- | --- | --- |
+| `HttpResponseTooLarge` | Response body > 20 MiB | Paginate or use file storage |
+| Request timeout | HTTP server timeout (5 min) | Break into smaller operations |
+
+**Sources**:
+
+- `crates/udf/src/http_action.rs:30` — Body limit constant
+- `crates/isolate/src/environment/action/mod.rs:605-614` — Response size enforcement
+- `crates/isolate/src/environment/action/stream.rs:17-21` — Multipart limit
+
+### 10. Cron Jobs Limits
+
+Cron jobs in Convex have specific retention and execution constraints.
+
+**Scheduling Limits** ✅ 🔒:
+
+| Limit | Value | Source Location | Status |
+| --- | --- | --- | --- |
+| **Logs retained per cron job** | 5 | `model/src/cron_jobs/mod.rs:161` | ✅ 🔒 |
+| **Log result max length** | 1,000 chars | `application/src/cron_jobs/mod.rs:95` | ✅ 🔒 |
+| **Log line max length** | 1,000 chars | `application/src/cron_jobs/mod.rs:96` | ✅ 🔒 |
+
+**Execution Behavior**:
+
+| Aspect | Behavior | Status |
+| --- | --- | --- |
+| **Execution type** | Cron jobs run as mutations or actions | ✅ |
+| **Timeout** | Inherits from function type (1s mutation, 10 min action) | ✅ |
+| **Retry semantics** | No automatic retry on failure | ✅ |
+| **Concurrency** | Cron jobs compete for normal function concurrency slots | ✅ |
+
+**Cron Syntax**:
+
+Convex uses standard cron syntax with 5 fields:
+
+```
+┌───────────── minute (0-59)
+│ ┌───────────── hour (0-23)
+│ │ ┌───────────── day of month (1-31)
+│ │ │ ┌───────────── month (1-12)
+│ │ │ │ ┌───────────── day of week (0-6, Sunday=0)
+│ │ │ │ │
+* * * * *
+```
+
+**Log Retention**:
+
+- Only the **5 most recent logs** are retained per cron job
+- Older logs are garbage collected automatically
+- Log content is truncated at 1,000 characters
+
+**Best Practices**:
+
+1. **Keep cron jobs lightweight** — Use them to trigger work, not do heavy processing
+2. **Handle failures gracefully** — No automatic retry means you need error handling
+3. **Monitor execution** — Only 5 logs retained, so use external monitoring for history
+4. **Avoid long-running crons** — Use scheduled functions for complex work chains
+
+**Sources**:
+
+- `crates/model/src/cron_jobs/mod.rs` — Cron job model and retention
+- `crates/application/src/cron_jobs/mod.rs` — Execution and logging
+- [Convex Cron Jobs Docs](https://docs.convex.dev/scheduling/cron-jobs)
+
+### 11. Durable Workflows
+
+Durable workflows in Convex (via `@convex-dev/workflow` package) have specific limits
+for state management and execution.
+
+**Package-Level Limits** ✅:
+
+| Limit | Value | Rationale | Status |
+| --- | --- | --- | --- |
+| **Workflow journal** | 8 MiB | Total serialized state (subset of function result limit) | ✅ |
+| **Step data** | 1 MiB | Args + return per step (matches document limit) | ✅ |
+| **Recommended max steps** | ~50 | Beyond this, replay timeout risk increases | ⚠️ |
+
+**Execution Constraints**:
+
+| Constraint | Value | Notes |
+| --- | --- | --- |
+| **Workflow handler timeout** | 1 second | Workflows run as mutations |
+| **Step action timeout** | 10 minutes | External work in `step.runAction()` |
+| **Replay budget** | Must complete within mutation timeout | Journal replay counts toward timeout |
+
+**Workflow Patterns**:
+
+1. **Checkpoint-Based Orchestration**:
+   - Workflow handler (mutation) coordinates steps
+   - Each step is checkpointed to journal
+   - On crash/timeout, workflow resumes from last checkpoint
+
+2. **Fire-and-Forget Chains**:
+   - For workflows spanning days, use `ctx.scheduler.runAfter()`
+   - Chain workflows: Day 1 workflow schedules Day 2 workflow
+   - Scheduler retention: 7 days (see Section 3)
+
+3. **Pass-by-Reference Pattern**:
+   - Store large payloads in documents, pass IDs through workflow
+   - Avoids hitting journal and step data limits
+   - Required for LLM responses, large datasets
+
+**Memory Considerations**:
+
+| Runtime | Heap | When to Use |
+| --- | --- | --- |
+| **Convex Runtime (V8)** | 64 MB | Simple workflows, quick operations |
+| **Node.js** (`"use node";`) | 512 MB | LLM calls, large data processing |
+
+**Step Count Guidelines**:
+
+- **< 20 steps**: Safe for most workflows
+- **20-50 steps**: Monitor replay time, consider chunking
+- **> 50 steps**: High risk of replay timeout; use fire-and-forget chains
+
+**Key Constraints**:
+
+1. **Journal size** — Total workflow state must fit in 8 MiB
+2. **Replay time** — All steps replay on each handler invocation
+3. **Idempotency** — Steps must be idempotent (may replay on retry)
+4. **Serialization** — All step data must be JSON-serializable
+
+**Sources**:
+
+- [Convex Workflow Component](https://github.com/get-convex/workflow)
+- [Durable Workflows Architecture](../../../project/research/current/research-convex-durable-workflows-architecture.md)
+- `@convex-dev/workflow` package documentation
+
 * * *
 
 ## Function Calling Rules and Composition Patterns
