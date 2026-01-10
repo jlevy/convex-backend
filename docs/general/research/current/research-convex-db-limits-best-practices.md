@@ -1,9 +1,9 @@
 # Research Brief: Convex Database Limits, Best Practices, and Workarounds
 
-**Last Updated**: 2026-01-08
+**Last Updated**: 2026-01-09
 
-**Status**: Complete (reviewed January 2026; updated 2026-01-08 with workflow idempotency
-cross-references)
+**Status**: Complete (reviewed January 2026; updated 2026-01-09 with source code verification
+and cross-references)
 
 **Legend**:
 
@@ -15,8 +15,15 @@ cross-references)
 | 🔒 | **Hard Limit** - Cannot be changed regardless of plan |
 | 🔄 | **Soft Limit** - Can be increased for Professional plan customers (contact support) |
 | ❌ | **Not Allowed** - Operation is prohibited or not supported |
+| 🔍 | **Undocumented/Discrepancy** - Not in official Convex docs, or source code differs from docs |
+| 🛠️ | **Configurable** - Can be changed via environment variable for self-hosted deployments |
 
-**Notation**: Combinations like “✅ 🔒” mean “Verified Hard Limit”
+**Notation**: Combinations like "✅ 🔒" mean "Verified Hard Limit"
+
+**Related Research**:
+
+- [research-convex-backend-limits-implementation.md](../../../project/research/current/research-convex-backend-limits-implementation.md) —
+  Deep dive into source code implementation of limits and configurability for self-hosted deployments
 
 * * *
 
@@ -90,15 +97,41 @@ This research synthesizes information from:
 
 **Hard Limits (per function invocation)** ✅ 🔒:
 
-| Limit Type | Value | Status |
-| --- | --- | --- |
-| **Maximum data read** | 8 MiB per query/mutation | ✅ 🔒 |
-| **Maximum documents scanned** | 16,384 documents per query/mutation | ✅ 🔒 |
-| **Maximum data written** | 8 MiB per mutation | ✅ 🔒 |
-| **Maximum documents written** | 8,192 documents per mutation | ✅ 🔒 |
-| **Maximum db.get/db.query calls** | 4,096 per transaction | ✅ 🔒 |
+| Limit Type | Documented Value | Source Code Default | Status |
+| --- | --- | --- | --- |
+| **Maximum data read** | 8 MiB per query/mutation | 16 MiB | ✅ 🔒 🔍 🛠️ |
+| **Maximum documents scanned** | 16,384 documents per query/mutation | 32,000 | ✅ 🔒 🔍 🛠️ |
+| **Maximum data written** | 8 MiB per mutation | 16 MiB | ✅ 🔒 🔍 🛠️ |
+| **Maximum documents written** | 8,192 documents per mutation | 16,000 | ✅ 🔒 🔍 🛠️ |
+| **Maximum db.get/db.query calls** | 4,096 per transaction | 4,096 | ✅ 🔒 🛠️ |
 
-**Key Constraint**: The 8 MiB read limit includes **all scanned document bytes**, not
+**🔍 Source Code vs Documentation Discrepancy**:
+
+The source code defaults in `crates/common/src/knobs.rs` are **2x more permissive** than
+documented limits:
+
+- `TRANSACTION_MAX_READ_SIZE_BYTES`: 16 MiB (line 355-357)
+- `TRANSACTION_MAX_READ_SIZE_ROWS`: 32,000 (line 351-352)
+- `TRANSACTION_MAX_USER_WRITE_SIZE_BYTES`: 16 MiB (line 212-214)
+- `TRANSACTION_MAX_NUM_USER_WRITES`: 16,000 (line 208-209)
+- `TRANSACTION_MAX_READ_SET_INTERVALS`: 4,096 (line 360-361)
+
+**Why the discrepancy?** Convex Cloud likely enforces stricter limits for free/starter
+plans while the codebase supports higher values for professional/enterprise customers
+and self-hosted deployments.
+
+**🛠️ Self-Hosted Configuration**:
+
+For self-hosted deployments, these limits can be adjusted via environment variables:
+
+```bash
+export TRANSACTION_MAX_READ_SIZE_BYTES=33554432  # 32 MiB
+export TRANSACTION_MAX_READ_SIZE_ROWS=64000
+export TRANSACTION_MAX_NUM_USER_WRITES=32000
+export TRANSACTION_MAX_USER_WRITE_SIZE_BYTES=33554432  # 32 MiB
+```
+
+**Key Constraint**: The read limit includes **all scanned document bytes**, not
 just returned results.
 Convex does not support field projection—reading any document reads the entire document.
 
@@ -118,31 +151,41 @@ Convex does not support field projection—reading any document reads the entire
 **Sources**:
 
 - [Convex Limits - Database](https://docs.convex.dev/production/state/limits)
+- Source: `crates/common/src/knobs.rs:208-214, 351-361`
 
 ### 2. Document Size and Structure Limits
 
 **Hard Limits (per document)** ✅ 🔒:
 
-- **Maximum document size**: 1 MiB (1,048,576 bytes)
+| Limit | Value | Source Location | Status |
+| --- | --- | --- | --- |
+| **Maximum document size** | 1 MiB (1,048,576 bytes) | `crates/common/src/document.rs:101` | ✅ 🔒 |
+| **Maximum fields per document** | 1,024 fields | `crates/value/src/object.rs:30` | ✅ 🔒 |
+| **Maximum nesting depth (user)** | 16 levels | `crates/common/src/document.rs:102` | ✅ 🔒 |
+| **Maximum nesting depth (system)** | 64 levels | `crates/value/src/size.rs:8` | ✅ 🔒 |
+| **Maximum array elements** | 8,192 elements per array | `crates/value/src/array.rs:26` | ✅ 🔒 |
+| **Maximum field name length** | 1,024 characters | `crates/sync_types/src/identifier.rs:124` | ✅ 🔒 🔍 |
+| **Maximum identifier length** | 64 characters | `crates/sync_types/src/identifier.rs:10` | ✅ 🔒 |
 
-- **Maximum fields per document**: 1,024 fields
+**🔍 Note on Field Name vs Identifier Length**:
 
-- **Maximum nesting depth**: 16 levels
-
-- **Maximum array elements**: 8,192 elements per array
-
-- **Maximum field name length**: 64 characters
+The docs say 64 characters for field names, but source code shows **1,024 characters**
+for field names (`MAX_FIELD_NAME_LENGTH`) vs **64 characters** for identifiers like table
+names (`MAX_IDENTIFIER_LEN`). These are different limits.
 
 **Key Constraints**:
 
 - Field names must be nonempty and cannot start with `$` or `_` (reserved for system
   fields)
 
-- Only “plain old JavaScript objects” are supported (no custom prototypes)
+- Only "plain old JavaScript objects" are supported (no custom prototypes)
 
 - Strings are stored as UTF-8 and must be valid Unicode sequences
 
 - System fields (`_id`, `_creationTime`) are automatically added and count toward limits
+
+- **These limits are hard-coded** and cannot be changed via configuration—modifying them
+  requires code changes to the value serialization layer
 
 **Common Causes of Issues**:
 
@@ -178,30 +221,55 @@ const events = await ctx.db.query('events').collect();
 
 ### 3. Concurrency and Execution Limits
 
-**Concurrent Execution Limits** ⚠️ 🔄:
+**Concurrent Execution Limits** ✅ 🔄 🛠️:
 
-| Resource Type | Starter/Free Plan | Professional Plan | Status |
+| Resource Type | Default (Code) | Source Location | Status |
 | --- | --- | --- | --- |
-| **Queries** | 16 concurrent | 256 concurrent | ⚠️ 🔄 |
-| **Mutations** | 16 concurrent | 256 concurrent | ⚠️ 🔄 |
-| **Convex Runtime Actions** | 64 concurrent | 256 concurrent | ⚠️ 🔄 |
-| **Node Actions** | 64 concurrent | 1,000 concurrent | ⚠️ 🔄 |
-| **HTTP Actions** | 16 concurrent | 128 concurrent | ⚠️ 🔄 |
-| **Scheduled Jobs** | 10 concurrent | 300 concurrent | ⚠️ 🔄 |
+| **Queries** | 16 concurrent | `crates/common/src/knobs.rs:768-773` | ✅ 🔄 🛠️ |
+| **Mutations** | 16 concurrent | `crates/common/src/knobs.rs:781-786` | ✅ 🔄 🛠️ |
+| **V8 Actions** | 16 concurrent | `crates/common/src/knobs.rs:802-807` | ✅ 🔄 🛠️ |
+| **Node Actions** | 16 concurrent | `crates/common/src/knobs.rs:818-823` | ✅ 🔄 🛠️ |
+| **HTTP Actions** | 16 concurrent | `crates/common/src/knobs.rs:832-841` | ✅ 🔄 🛠️ |
+| **Scheduled Job Parallelism** | 10 concurrent | `crates/common/src/knobs.rs:281-282` | ✅ 🔄 🛠️ |
 
-*Note: Specific concurrency numbers may have changed; verify at
-[Convex Limits](https://docs.convex.dev/production/state/limits) or
-[Convex Pricing](https://www.convex.dev/pricing).*
+**🔍 Note on Concurrency Defaults**:
 
-**Execution Time Limits** ✅ 🔒:
+The source code base constant `DEFAULT_APPLICATION_MAX_FUNCTION_CONCURRENCY` is **16**
+for all function types. Convex Cloud overrides these via a "big brain" service for
+Professional plan customers (256 queries/mutations, 1000 Node actions, etc.).
 
-- **Queries/Mutations**: JavaScript execution must complete within **1 second**
-  (database access time excluded)
+**🛠️ Self-Hosted Configuration**:
 
-- **Actions**: Maximum execution time of **10 minutes**
+```bash
+export APPLICATION_MAX_CONCURRENT_QUERIES=64
+export APPLICATION_MAX_CONCURRENT_MUTATIONS=64
+export APPLICATION_MAX_CONCURRENT_V8_ACTIONS=64
+export APPLICATION_MAX_CONCURRENT_NODE_ACTIONS=64
+export APPLICATION_MAX_CONCURRENT_HTTP_ACTIONS=64
+export SCHEDULED_JOB_EXECUTION_PARALLELISM=20
+```
 
-- **Scheduled Functions**: A single mutation can schedule up to **1,000 functions** with
-  **8 MiB total arguments** (not 16 MiB)
+*Note: Professional plan limits (256, 1000, etc.) are enforced by Convex Cloud's
+"big brain" service, not by these code defaults.*
+
+**Execution Time Limits** ✅ 🔒 🛠️:
+
+| Limit | Value | Source Location | Status |
+| --- | --- | --- | --- |
+| **Query/Mutation user timeout** | 1 second | `crates/common/src/knobs.rs:692-693` | ✅ 🔒 🛠️ |
+| **Query/Mutation system timeout** | 15 seconds | `crates/common/src/knobs.rs:703-704` | ✅ 🔒 🛠️ |
+| **Action timeout** | 10 minutes (600s) | `crates/common/src/knobs.rs:119-120` | ✅ 🔒 🛠️ |
+| **V8 action system timeout** | 5 minutes (300s) | `crates/common/src/knobs.rs:745-746` | ✅ 🔒 🛠️ |
+
+**Scheduled Functions** ✅ 🔒 🛠️:
+
+| Limit | Value | Source Location | Status |
+| --- | --- | --- | --- |
+| **Max scheduled per mutation** | 1,000 | `crates/common/src/knobs.rs:254-255` | ✅ 🔒 🛠️ |
+| **Total scheduled args** | 16 MiB | `crates/common/src/knobs.rs:269-275` | ✅ 🔒 🛠️ 🔍 |
+
+**🔍 Note**: The source code default for scheduled args is **16 MiB**, not 8 MiB as
+sometimes documented. Variable: `TRANSACTION_MAX_SCHEDULED_TOTAL_ARGUMENT_SIZE_BYTES`
 
 **Key Constraints**:
 
@@ -261,11 +329,12 @@ For operations that may exceed this limit:
 
 ### 3.1 Logging Limits
 
-**Limit** 📝 🔒: 256 log lines per function execution
+**Limit** ✅ 🔒 🔍: 256 log lines per function execution
 
-*Note: This limit is based on production experience and testing; not explicitly
-documented in official Convex docs.
-May need verification.*
+**Source Code Verification**: `MAX_LOG_LINES: usize = 256` in
+`crates/isolate/src/environment/helpers/mod.rs:29`
+
+This limit is not documented in official Convex docs but is verified in source code.
 
 **Applies To**: All function types (queries, mutations, actions, HTTP actions)
 
@@ -320,12 +389,23 @@ May need verification.*
 
 ### 3.2 Action Memory Limits
 
-**Limits (per action invocation)** ✅ 🔄:
+**Limits (per action invocation)** ✅ 🔄 🛠️:
 
-| Runtime | Memory Limit | Cold Start | Use Case | Status |
+| Runtime | Memory Limit | Source Location | Cold Start | Status |
 | --- | --- | --- | --- | --- |
-| **Convex Runtime** (default) | 64 MB | Faster (no cold start) | Simple fetch calls, lightweight processing | ✅ 🔄 |
-| **Node.js Runtime** | 512 MB | Slower (cold start possible) | NPM packages, memory-intensive operations | ✅ 🔄 |
+| **Convex Runtime** (default) | 64 MB | `crates/common/src/knobs.rs:849-850` | Faster (no cold start) | ✅ 🔄 🛠️ |
+| **Node.js Runtime (static)** | 512 MB | `crates/common/src/knobs.rs:1119-1120` | Slower (cold start possible) | ✅ 🔄 🛠️ |
+| **Node.js Runtime (dynamic)** | 4,096 MB | `crates/common/src/knobs.rs:1130-1131` | Build/analyze only | ✅ 🔄 🛠️ |
+
+**🛠️ Self-Hosted Configuration**:
+
+For self-hosted deployments, memory limits can be adjusted via environment variables:
+
+```bash
+export ISOLATE_MAX_USER_HEAP_SIZE=134217728        # 128 MB for V8 (default 64 MB)
+export ISOLATE_MAX_HEAP_EXTRA_SIZE=67108864        # 64 MB extra (default 32 MB)
+export AWS_STATIC_LAMBDA_MEMORY_LIMIT_MB=1024     # 1 GB for Node.js (default 512 MB)
+```
 
 **Key Constraints**:
 
@@ -469,35 +549,41 @@ official pricing.*
 
 **Index Limits (per table)** ✅ 🔒:
 
-- **Maximum indexes**: 32 indexes per table ✅
+| Limit | Documented | Source Code | Source Location | Status |
+| --- | --- | --- | --- | --- |
+| **Maximum indexes per table** | 32 | **64** | `crates/common/src/schemas/mod.rs:64` | ✅ 🔒 🔍 |
+| **Maximum fields per index** | 16 | 16 | `crates/common/src/bootstrap_model/index/mod.rs:42` | ✅ 🔒 |
+| **Maximum index name length** | 64 chars | 64 chars | `crates/sync_types/src/identifier.rs:10` | ✅ 🔒 |
 
-- **Maximum fields per index**: 16 fields ✅
+**🔍 Index Count Discrepancy**:
 
-- **Maximum index name length**: 64 characters ⚠️
+The source code constant `MAX_INDEXES_PER_TABLE` is **64**, not 32 as documented. This is
+the total across all index types (database indexes, text indexes, and vector indexes).
 
-**Schema Limits (per deployment)** ⚠️:
+**Schema Limits (per deployment)** ✅ 🔒:
 
-- **Maximum tables**: 10,000 tables per deployment ⚠️
+| Limit | Value | Source Location | Status |
+| --- | --- | --- | --- |
+| **Maximum tables** | 10,000 | `crates/database/src/bootstrap_model/table.rs:62` | ✅ 🔒 |
+| **Maximum user modules** | 4,096 | `crates/common/src/knobs.rs:1329-1330` | ✅ 🔒 🛠️ |
 
 **Full-Text Search Indexes** ✅ 🔒:
 
-- **Maximum full-text indexes per table**: 4 ✅
-
-- **Maximum filters per full-text index**: 16 ✅
-
-- **Maximum results per query**: 1,024 ✅
+| Limit | Value | Source Location | Status |
+| --- | --- | --- | --- |
+| **Maximum full-text indexes per table** | 4 | Docs (within 64 total) | ✅ 🔒 |
+| **Maximum filters per full-text index** | 16 | `crates/common/src/bootstrap_model/index/mod.rs:43` | ✅ 🔒 |
+| **Maximum results per query** | 1,024 | `crates/search/src/constants.rs:18` | ✅ 🔒 |
 
 **Vector Search Indexes** ✅ 🔒:
 
-- **Maximum vector indexes per table**: 4 ✅
-
-- **Maximum filters per vector index**: 16 ✅
-
-- **Vector dimensions**: One dimension field per vector, 2–4,096 dimensions ✅
-
-- **Maximum results per query**: 256 (default 10) ✅
-
-- **Maximum indexed documents**: 100,000 per vector index ✅
+| Limit | Value | Source Location | Status |
+| --- | --- | --- | --- |
+| **Maximum vector indexes per table** | 4 | Docs (within 64 total) | ✅ 🔒 |
+| **Maximum filters per vector index** | 16 | `crates/common/src/bootstrap_model/index/mod.rs:44` | ✅ 🔒 |
+| **Maximum dimensions** | 4,096 | `crates/common/src/bootstrap_model/index/vector_index/dimensions.rs:6` | ✅ 🔒 |
+| **Maximum results per query** | 256 (default 10) | `crates/vector/src/lib.rs:64` | ✅ 🔒 |
+| **Maximum indexed documents** | 100,000 per vector index | Docs | ✅ 🔒 |
 
 **Key Constraints**:
 
@@ -508,9 +594,12 @@ official pricing.*
 
 - Indexes add overhead during document insertion
 
+- All index types (database, text, vector) share the 64 total indexes per table limit
+
 **Sources**:
 
 - [Convex Limits - Indexes](https://docs.convex.dev/production/state/limits)
+- Source: `crates/common/src/schemas/mod.rs`, `crates/common/src/bootstrap_model/index/mod.rs`
 
 ### 6. Function and Code Limits
 
@@ -537,13 +626,21 @@ official pricing.*
 
 **Environment Variables** ✅ 🔒:
 
-- **Maximum environment variables**: 100 per deployment ✅
+| Limit | Documented | Source Code | Source Location | Status |
+| --- | --- | --- | --- | --- |
+| **Maximum environment variables** | 100 | **1,000** | `crates/common/src/knobs.rs:1537-1538` | ✅ 🔒 🔍 🛠️ |
+| **Maximum variable name length** | 40 chars | 40 chars | `crates/common/src/types/environment_variables.rs:66` | ✅ 🔒 |
+| **Maximum variable value length** | N/A | 8,192 bytes | `crates/common/src/types/environment_variables.rs:69` | ✅ 🔒 |
 
-- **Maximum variable name length**: 40 characters ✅
+**🔍 Env Var Count Discrepancy**:
+
+The source code default `ENV_VAR_LIMIT` is **1,000**, not 100 as documented. This is
+configurable via the `ENV_VAR_LIMIT` environment variable for self-hosted deployments.
 
 **Sources**:
 
 - [Convex Limits - Functions](https://docs.convex.dev/production/state/limits)
+- Source: `crates/common/src/knobs.rs:1537-1538`, `crates/common/src/types/environment_variables.rs`
 
 ### 7. Runtime Architecture and Isolation Model
 
@@ -1273,12 +1370,33 @@ requirements apply beyond OCC conflict handling:
 - [plan-2026-01-09-durable-workflows-agent-conversations-v3.md](../../../project/specs/active/plan-2026-01-09-durable-workflows-agent-conversations-v3.md)
   § "Idempotency Contract" for implementation-ready details
 
+**🛠️ OCC Configuration (Self-Hosted)**:
+
+The OCC retry behavior is configurable via environment variables:
+
+| Setting | Default | Env Var | Source |
+| --- | --- | --- | --- |
+| Max retries | 4 | `UDF_EXECUTOR_OCC_MAX_RETRIES` | `knobs.rs:146-147` |
+| Initial backoff | 10ms | `UDF_EXECUTOR_OCC_INITIAL_BACKOFF_MS` | `knobs.rs:150-151` |
+| Max backoff | 2,000ms | `UDF_EXECUTOR_OCC_MAX_BACKOFF_MS` | `knobs.rs:154-155` |
+
+Self-hosted deployments with lower contention could reduce retries; high-contention
+scenarios might benefit from longer backoffs:
+
+```bash
+export UDF_EXECUTOR_OCC_MAX_RETRIES=8
+export UDF_EXECUTOR_OCC_INITIAL_BACKOFF_MS=20
+export UDF_EXECUTOR_OCC_MAX_BACKOFF_MS=5000
+```
+
 **Sources**:
 
 - [Convex Aggregate Component](https://github.com/get-convex/aggregate)
 
 - [@convex-dev/workpool](https://www.npmjs.com/package/@convex-dev/workpool) — "you
   should ensure that each step is an idempotent Convex action"
+
+- Source: `crates/common/src/knobs.rs:146-155`
 
 ### Pitfall 6: Storage and Bandwidth Overages
 
@@ -1994,44 +2112,48 @@ the problematic nested same-runtime pattern.
 ### Limit Quick Reference (January 2026)
 
 **Note**: Limits marked ✅ are verified against official documentation as of January
-2026\. Limits marked ⚠️ need verification.
+2026\. Limits marked 🔍 have source code values that differ from documentation.
 Professional plan customers can request increases on a case-by-case basis by contacting
 mailto:support@convex.dev.
 
-| Category | Limit Type | Value | Status |
-| --- | --- | --- | --- |
-| **Transaction Read** | Maximum data read | 8 MiB per query/mutation | ✅ 🔒 |
-|  | Maximum documents scanned | 16,384 per query/mutation | ✅ 🔒 |
-|  | Maximum db.get/db.query calls | 4,096 per transaction | ✅ 🔒 |
-| **Transaction Write** | Maximum data written | 8 MiB per mutation | ✅ 🔒 |
-|  | Maximum documents written | 8,192 per mutation | ✅ 🔒 |
-| **Document** | Maximum size | 1 MiB | ✅ 🔒 |
-|  | Maximum fields | 1,024 | ✅ 🔒 |
-|  | Maximum nesting depth | 16 levels | ✅ 🔒 |
-|  | Maximum array elements | 8,192 | ✅ 🔒 |
-| **Execution Time** | Query/Mutation JS execution | 1 second | ✅ 🔒 |
-|  | Action execution | 10 minutes (600s) | ✅ 🔒 |
-| **Action Memory** | Convex Runtime | 64 MB | ✅ 🔄 |
-|  | Node.js Runtime | 512 MB | ✅ 🔄 |
-| **Function Arguments** | Convex Runtime | 8 MiB | ✅ 🔒 |
-|  | Node.js Runtime | 5 MiB | ✅ 🔒 |
-| **Scheduled Functions** | Max functions per mutation | 1,000 | ✅ 🔒 |
-|  | Total argument size | 8 MiB | ✅ 🔒 |
-| **Logging** | Log lines per execution | 256 lines max | 📝 🔒 |
-| **Concurrency (Pro)** | Queries | 256 concurrent | ⚠️ 🔄 |
-|  | Mutations | 256 concurrent | ⚠️ 🔄 |
-|  | Node Actions | 1,000 concurrent | ⚠️ 🔄 |
-|  | Scheduled Jobs | 300 concurrent | ⚠️ 🔄 |
-| **Storage (Pro)** | Database storage | ~1 GiB+ (verify pricing) | ⚠️ 🔄 |
-|  | Database bandwidth | ~50 GiB/month (verify) | ⚠️ 🔄 |
-|  | File storage | (verify pricing page) | ⚠️ 🔄 |
-| **Indexes** | Indexes per table | 32 | ✅ 🔒 |
-|  | Fields per index | 16 | ✅ 🔒 |
-|  | Full-text indexes per table | 4 | ✅ 🔒 |
-|  | Vector indexes per table | 4 | ✅ 🔒 |
-|  | Vector index max documents | 100,000 | ✅ 🔒 |
-| **Search Results** | Full-text search results | 1,024 max | ✅ 🔒 |
-|  | Vector search results | 256 max | ✅ 🔒 |
+| Category | Limit Type | Documented | Source Code | Status |
+| --- | --- | --- | --- | --- |
+| **Transaction Read** | Maximum data read | 8 MiB | **16 MiB** | ✅ 🔒 🔍 🛠️ |
+|  | Maximum documents scanned | 16,384 | **32,000** | ✅ 🔒 🔍 🛠️ |
+|  | Maximum db.get/db.query calls | 4,096 | 4,096 | ✅ 🔒 🛠️ |
+| **Transaction Write** | Maximum data written | 8 MiB | **16 MiB** | ✅ 🔒 🔍 🛠️ |
+|  | Maximum documents written | 8,192 | **16,000** | ✅ 🔒 🔍 🛠️ |
+| **Document** | Maximum size | 1 MiB | 1 MiB | ✅ 🔒 |
+|  | Maximum fields | 1,024 | 1,024 | ✅ 🔒 |
+|  | Maximum nesting depth | 16 levels | 16 levels | ✅ 🔒 |
+|  | Maximum array elements | 8,192 | 8,192 | ✅ 🔒 |
+|  | Maximum field name length | 64 chars | **1,024 chars** | ✅ 🔒 🔍 |
+| **Execution Time** | Query/Mutation user timeout | 1 second | 1 second | ✅ 🔒 🛠️ |
+|  | Query/Mutation system timeout | N/A | 15 seconds | ✅ 🔒 🛠️ |
+|  | Action execution | 10 minutes | 10 minutes | ✅ 🔒 🛠️ |
+| **Action Memory** | Convex Runtime | 64 MB | 64 MB | ✅ 🔄 🛠️ |
+|  | Node.js Runtime | 512 MB | 512 MB | ✅ 🔄 🛠️ |
+| **Function Arguments** | Convex Runtime | 8 MiB | **16 MiB** | ✅ 🔒 🔍 🛠️ |
+|  | Node.js Runtime | 5 MiB | 5 MiB (error msg) | ✅ 🔒 |
+| **Scheduled Functions** | Max functions per mutation | 1,000 | 1,000 | ✅ 🔒 🛠️ |
+|  | Total argument size | 8 MiB | **16 MiB** | ✅ 🔒 🔍 🛠️ |
+| **Logging** | Log lines per execution | N/A | 256 | ✅ 🔒 🔍 |
+| **Concurrency (default)** | Queries | 16 | 16 | ✅ 🔄 🛠️ |
+|  | Mutations | 16 | 16 | ✅ 🔄 🛠️ |
+|  | V8/Node/HTTP Actions | 16 | 16 | ✅ 🔄 🛠️ |
+|  | Scheduled Job Parallelism | 10 | 10 | ✅ 🔄 🛠️ |
+| **Indexes** | Indexes per table | 32 | **64** | ✅ 🔒 🔍 |
+|  | Fields per index | 16 | 16 | ✅ 🔒 |
+|  | Full-text indexes per table | 4 | 4 | ✅ 🔒 |
+|  | Vector indexes per table | 4 | 4 | ✅ 🔒 |
+|  | Vector index max documents | 100,000 | 100,000 | ✅ 🔒 |
+| **Search Results** | Full-text search results | 1,024 | 1,024 | ✅ 🔒 |
+|  | Vector search results | 256 | 256 | ✅ 🔒 |
+| **Environment Vars** | Maximum count | 100 | **1,000** | ✅ 🔒 🔍 🛠️ |
+|  | Name length | 40 chars | 40 chars | ✅ 🔒 |
+|  | Value length | N/A | 8,192 bytes | ✅ 🔒 |
+
+**Key**: 🔍 = Source code differs from docs; 🛠️ = Configurable via env var for self-hosted
 
 ### Common Error Messages and Solutions
 
