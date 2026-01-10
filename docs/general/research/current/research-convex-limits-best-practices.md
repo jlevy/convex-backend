@@ -1,9 +1,15 @@
-# Research Brief: Convex Database Limits, Best Practices, and Workarounds
+# Research Brief: Convex Platform Limits and Best Practices
 
-**Last Updated**: 2026-01-09
+**Last Updated**: 2026-01-10
 
-**Status**: Complete (reviewed January 2026; updated 2026-01-09 with source code
-verification and cross-references)
+**Status**: Active (reviewed January 2026; updated 2026-01-10 with expanded scope beyond
+database limits)
+
+<!-- TODO: SCOPE EXPANSION - This document has been renamed from "Convex Database
+Limits" to "Convex Platform Limits" to reflect its broader scope covering execution,
+concurrency, storage, and other platform-wide constraints.
+Sections still needing expansion are marked with TODO comments throughout.
+-->
 
 **Legend**:
 
@@ -26,6 +32,10 @@ verification and cross-references)
   — Deep dive into source code implementation of limits and configurability for
   self-hosted deployments
 
+- [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md)
+  — Backend architecture analysis for durable workflow patterns, including
+  workflow-specific limits and constraints
+
 * * *
 
 ## Executive Summary
@@ -46,8 +56,6 @@ maintaining statistics at scale.
 combining official best practices—selective indexes, pagination, aggregate components,
 bounded queries, proper namespacing, and scheduled jobs—with proactive monitoring of
 storage and bandwidth quotas.
-
-* * *
 
 ## Research Methodology
 
