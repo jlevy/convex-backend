@@ -150,6 +150,80 @@ workarounds and best practices for each challenge area.
 
 * * *
 
+## Configuration System Architecture
+
+Understanding how Convex implements and configures its limits is essential for self-hosted
+deployments and for understanding which limits can be adjusted.
+
+### The Knobs System
+
+Convex uses a centralized configuration system called "knobs" defined in
+`crates/common/src/knobs.rs`. This system provides:
+
+- **Environment variable override**: All knobs can be set via environment variables for
+  local development and self-hosted deployments
+
+- **Consul integration**: Production deployments can modify knobs at runtime via Consul
+  at `conductor/<partition-id>/knobs/<knob-name>`
+
+- **Type-safe defaults**: Each knob has a compile-time default value
+
+**Implementation Pattern**:
+
+```rust
+// From crates/common/src/knobs.rs
+pub static TRANSACTION_MAX_READ_SIZE_BYTES: LazyLock<usize> = LazyLock::new(|| {
+    env_config("TRANSACTION_MAX_READ_SIZE_BYTES", 1 << 24) // 16 MiB default
+});
+```
+
+The knobs system is well-designed for operational flexibility. Self-hosted deployments
+can override any configurable knob via environment variables without code changes.
+
+### Configurable vs Hard-Coded Limits
+
+Not all limits can be changed via configuration. The breakdown:
+
+| Category | Configurable | Hard-Coded | Total |
+| --- | --- | --- | --- |
+| Transaction limits | 6 | 0 | 6 |
+| Document structure | 0 | 7 | 7 |
+| Execution time | 6 | 0 | 6 |
+| Memory limits | 5 | 0 | 5 |
+| Arg/result sizes | 2 | 2 | 4 |
+| Index limits | 0 | 6 | 6 |
+| Schema limits | 2 | 1 | 3 |
+| Search limits | 4 | 3 | 7 |
+| Concurrency | 7 | 0 | 7 |
+| Scheduling | 5 | 0 | 5 |
+| Logging | 0 | 1 | 1 |
+| OCC | 3 | 0 | 3 |
+| Env vars | 1 | 2 | 3 |
+| **Total** | **41** | **22** | **63** |
+
+**Summary**: ~65% of limits are configurable via environment variables without code
+changes. Hard-coded limits (document structure, index limits, search results) are deeply
+embedded in serialization and storage layers.
+
+### Code Defaults vs Documented Limits
+
+Convex Cloud applies stricter limits than the source code defaults, likely differentiated
+by plan tier:
+
+| Limit | Code Default | Documented | Ratio |
+| --- | --- | --- | --- |
+| Max docs read | 32,000 | 16,384 | 1.95x |
+| Max bytes read | 16 MiB | 8 MiB | 2x |
+| Max docs written | 16,000 | 8,192 | 1.95x |
+| Max bytes written | 16 MiB | 8 MiB | 2x |
+| Max indexes per table | 64 | 32 | 2x |
+| Max env vars | 1,000 | 100 | 10x |
+
+Self-hosted deployments get the more permissive code defaults unless explicitly
+configured otherwise.
+
+* * *
+
 ## Core Limits Reference
 
 ### 1. Transaction Read/Write Limits
@@ -2579,7 +2653,218 @@ When verifying limits, check:
   — Tracking document with TODOs for coverage expansion and structural improvements
 
 - [research-convex-backend-limits-implementation.md](../../../project/research/current/research-convex-backend-limits-implementation.md)
-  — Detailed source code analysis of limits implementation (to be integrated)
+  — Original source code analysis (now integrated into this document)
 
 - [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md)
   — Durable workflows architecture analysis
+
+## Appendix C: Complete Knobs Reference
+
+The following is a categorized list of all configurable knobs with their environment
+variable names and default values. These can be set via environment variables for
+self-hosted deployments.
+
+### Transaction Limits
+
+| Knob | Env Var | Default |
+| --- | --- | --- |
+| `TRANSACTION_MAX_READ_SIZE_ROWS` | `TRANSACTION_MAX_READ_SIZE_ROWS` | 32,000 |
+| `TRANSACTION_MAX_READ_SIZE_BYTES` | `TRANSACTION_MAX_READ_SIZE_BYTES` | 16 MiB |
+| `TRANSACTION_MAX_READ_SET_INTERVALS` | `TRANSACTION_MAX_READ_SET_INTERVALS` | 4,096 |
+| `TRANSACTION_MAX_NUM_USER_WRITES` | `TRANSACTION_MAX_NUM_USER_WRITES` | 16,000 |
+| `TRANSACTION_MAX_USER_WRITE_SIZE_BYTES` | `TRANSACTION_MAX_USER_WRITE_SIZE_BYTES` | 16 MiB |
+| `TRANSACTION_MAX_NUM_SCHEDULED` | `TRANSACTION_MAX_NUM_SCHEDULED` | 1,000 |
+
+### Execution Limits
+
+| Knob | Env Var | Default |
+| --- | --- | --- |
+| `DATABASE_UDF_USER_TIMEOUT` | `DATABASE_UDF_USER_TIMEOUT_SECONDS` | 1s |
+| `DATABASE_UDF_SYSTEM_TIMEOUT` | `DATABASE_UDF_SYSTEM_TIMEOUT_SECONDS` | 15s |
+| `ACTION_USER_TIMEOUT` | `ACTIONS_USER_TIMEOUT_SECS` | 600s |
+| `V8_ACTION_SYSTEM_TIMEOUT` | `V8_ACTION_SYSTEM_TIMEOUT_SECONDS` | 300s |
+| `HTTP_SERVER_TIMEOUT_DURATION` | `HTTP_SERVER_TIMEOUT_SECONDS` | 300s 🔍 |
+
+### Memory Limits
+
+| Knob | Env Var | Default |
+| --- | --- | --- |
+| `ISOLATE_MAX_USER_HEAP_SIZE` | `ISOLATE_MAX_USER_HEAP_SIZE` | 64 MB |
+| `ISOLATE_MAX_HEAP_EXTRA_SIZE` | `ISOLATE_MAX_HEAP_EXTRA_SIZE` | 32 MB |
+| `ISOLATE_MAX_ARRAY_BUFFER_TOTAL_SIZE` | `ISOLATE_MAX_ARRAY_BUFFER_TOTAL_SIZE` | 64 MB |
+| `AWS_STATIC_LAMBDA_MEMORY_LIMIT_MB` | `AWS_STATIC_LAMBDA_MEMORY_LIMIT_MB` | 512 |
+| `AWS_DYNAMIC_LAMBDA_MEMORY_LIMIT_MB` | `AWS_DYNAMIC_LAMBDA_MEMORY_LIMIT_MB` | 4,096 |
+
+### Concurrency Limits
+
+| Knob | Env Var | Default |
+| --- | --- | --- |
+| `APPLICATION_MAX_CONCURRENT_QUERIES` | `APPLICATION_MAX_CONCURRENT_QUERIES` | 16 |
+| `APPLICATION_MAX_CONCURRENT_MUTATIONS` | `APPLICATION_MAX_CONCURRENT_MUTATIONS` | 16 |
+| `APPLICATION_MAX_CONCURRENT_V8_ACTIONS` | `APPLICATION_MAX_CONCURRENT_V8_ACTIONS` | 16 |
+| `APPLICATION_MAX_CONCURRENT_NODE_ACTIONS` | `APPLICATION_MAX_CONCURRENT_NODE_ACTIONS` | 16 |
+| `APPLICATION_MAX_CONCURRENT_HTTP_ACTIONS` | `APPLICATION_MAX_CONCURRENT_HTTP_ACTIONS` | 16 |
+| `HTTP_SERVER_MAX_CONCURRENT_REQUESTS` | `HTTP_SERVER_MAX_CONCURRENT_REQUESTS` | 1,024 |
+
+### Search Index Limits
+
+| Knob | Env Var | Default |
+| --- | --- | --- |
+| `SEARCH_INDEX_SIZE_SOFT_LIMIT` | `SEARCH_INDEX_SIZE_SOFT_LIMIT` | 10 MiB |
+| `TEXT_INDEX_SIZE_HARD_LIMIT` | `SEARCH_INDEX_SIZE_HARD_LIMIT` | 100 MiB |
+| `VECTOR_INDEX_SIZE_SOFT_LIMIT` | `VECTOR_INDEX_SIZE_SOFT_LIMIT` | 30 MiB |
+| `VECTOR_INDEX_SIZE_HARD_LIMIT` | `VECTOR_INDEX_SIZE_HARD_LIMIT` | 100 MiB |
+
+### OCC (Optimistic Concurrency Control)
+
+| Knob | Env Var | Default |
+| --- | --- | --- |
+| `UDF_EXECUTOR_OCC_MAX_RETRIES` | `UDF_EXECUTOR_OCC_MAX_RETRIES` | 4 |
+| `UDF_EXECUTOR_OCC_INITIAL_BACKOFF_MS` | `UDF_EXECUTOR_OCC_INITIAL_BACKOFF_MS` | 10ms |
+| `UDF_EXECUTOR_OCC_MAX_BACKOFF_MS` | `UDF_EXECUTOR_OCC_MAX_BACKOFF_MS` | 2,000ms |
+
+### Scheduling Limits
+
+| Knob | Env Var | Default |
+| --- | --- | --- |
+| `MAX_SCHEDULED_JOB_ARGUMENT_SIZE_BYTES` | `MAX_SCHEDULED_JOB_ARGUMENT_SIZE_BYTES` | 1 MiB |
+| `TRANSACTION_MAX_SCHEDULED_TOTAL_ARGUMENT_SIZE_BYTES` | `TRANSACTION_MAX_SCHEDULED_TOTAL_ARGUMENT_SIZE_BYTES` | 16 MiB |
+| `SCHEDULED_JOB_EXECUTION_PARALLELISM` | `SCHEDULED_JOB_EXECUTION_PARALLELISM` | 10 |
+| `SCHEDULED_JOB_RETENTION` | `SCHEDULED_JOB_RETENTION` | 7 days |
+
+### Other Limits
+
+| Knob | Env Var | Default |
+| --- | --- | --- |
+| `FUNCTION_MAX_ARGS_SIZE` | `FUNCTION_MAX_ARGS_SIZE` | 16 MiB |
+| `FUNCTION_MAX_RESULT_SIZE` | `FUNCTION_MAX_RESULT_SIZE` | 16 MiB |
+| `MAX_USER_MODULES` | `MAX_USER_MODULES` | 4,096 |
+| `MAX_PUSH_BYTES` | `MAX_PUSH_BYTES` | 200 MB |
+| `ENV_VAR_LIMIT` | `ENV_VAR_LIMIT` | 1,000 |
+
+## Appendix D: Hard-Coded Limits Reference
+
+The following limits require code modification to change. They are deeply embedded in
+the value serialization and storage layers.
+
+### Document Structure (`crates/value/src/` and `crates/common/src/document.rs`)
+
+```rust
+pub const MAX_USER_SIZE: usize = 1 << 20;           // 1 MiB
+pub const MAX_DOCUMENT_NESTING: usize = 16;
+pub const MAX_OBJECT_FIELDS: usize = 1024;
+pub const MAX_ARRAY_LEN: usize = 8192;
+pub const MAX_FIELD_NAME_LENGTH: usize = 1024;
+pub const MAX_IDENTIFIER_LEN: usize = 64;
+```
+
+### Index Limits (`crates/common/src/` and `crates/database/src/`)
+
+```rust
+pub const MAX_INDEXES_PER_TABLE: usize = 64;
+pub const MAX_INDEX_FIELDS_SIZE: usize = 16;
+pub const MAX_TEXT_INDEX_FILTER_FIELDS_SIZE: usize = 16;
+pub const MAX_VECTOR_INDEX_FILTER_FIELDS_SIZE: usize = 16;
+pub const MAX_USER_TABLES: usize = 10000;
+```
+
+### Search Limits (`crates/search/src/` and `crates/vector/src/`)
+
+```rust
+pub const MAX_CANDIDATE_REVISIONS: usize = 1024;    // Text search results
+pub const MAX_VECTOR_RESULTS: usize = 256;
+pub const MAX_VECTOR_DIMENSIONS: u32 = 4096;
+```
+
+### Logging (`crates/isolate/src/environment/helpers/mod.rs`)
+
+```rust
+pub const MAX_LOG_LINES: usize = 256;
+```
+
+### HTTP Actions (`crates/udf/src/http_action.rs`)
+
+```rust
+pub const HTTP_ACTION_BODY_LIMIT: usize = 20 << 20; // 20 MiB
+```
+
+### Environment Variables (`crates/common/src/types/environment_variables.rs`)
+
+```rust
+pub const MAX_ENV_VAR_NAME_LENGTH: usize = 40;
+pub const MAX_ENV_VAR_VALUE_LENGTH: usize = 8192;
+```
+
+## Appendix E: Self-Hosted Configuration Guide
+
+This appendix consolidates guidance for configuring limits in self-hosted Convex
+deployments.
+
+### Safe Limits to Increase
+
+These limits can be safely increased based on available resources:
+
+- **Concurrency limits** (`APPLICATION_MAX_CONCURRENT_*`): Scale based on CPU cores and
+  memory
+
+- **Memory limits** (`ISOLATE_MAX_USER_HEAP_SIZE`): Scale based on available RAM
+
+- **Execution timeouts**: Increase if running longer batch operations
+
+- **Transaction limits**: Increase for larger batch operations if storage can handle it
+
+### Limits Requiring Caution
+
+These require careful consideration before changing:
+
+- **Search index hard limits**: Affects memory usage during search operations
+
+- **OCC retry counts**: Too many retries can cause cascading failures under load
+
+- **HTTP concurrent requests**: May overwhelm downstream services
+
+### Limits Not Recommended to Change
+
+These are fundamental to system correctness:
+
+- **Document structure limits**: Deeply embedded in serialization
+
+- **Max search/vector results**: Query planning depends on these
+
+- **Index field counts**: Storage format assumptions
+
+### Example Configuration File
+
+For self-hosted deployments, create a configuration file:
+
+```bash
+# Transaction limits (increase for larger batch operations)
+export TRANSACTION_MAX_READ_SIZE_ROWS=64000
+export TRANSACTION_MAX_READ_SIZE_BYTES=33554432  # 32 MiB
+export TRANSACTION_MAX_NUM_USER_WRITES=32000
+export TRANSACTION_MAX_USER_WRITE_SIZE_BYTES=33554432  # 32 MiB
+
+# Execution limits (adjust based on workload)
+export DATABASE_UDF_USER_TIMEOUT_SECONDS=2
+export ACTIONS_USER_TIMEOUT_SECS=900  # 15 minutes
+
+# Memory limits (scale with available RAM)
+export ISOLATE_MAX_USER_HEAP_SIZE=134217728  # 128 MB
+
+# Concurrency (scale with CPU cores)
+export APPLICATION_MAX_CONCURRENT_QUERIES=64
+export APPLICATION_MAX_CONCURRENT_MUTATIONS=64
+export APPLICATION_MAX_CONCURRENT_V8_ACTIONS=64
+```
+
+### Recommended Approach
+
+1. **Start with defaults**: The default limits are well-tuned for general use cases
+
+2. **Monitor before changing**: Use metrics to identify actual bottlenecks before
+   adjusting limits
+
+3. **Test thoroughly**: Changes to limits can have cascading effects on system behavior
+
+4. **Document changes**: Maintain a configuration file with explanations for any
+   modified limits
