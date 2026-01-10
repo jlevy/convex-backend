@@ -2,8 +2,8 @@
 
 **Last Updated**: 2026-01-09
 
-**Status**: Complete (reviewed January 2026; updated 2026-01-09 with source code verification
-and cross-references)
+**Status**: Complete (reviewed January 2026; updated 2026-01-09 with source code
+verification and cross-references)
 
 **Legend**:
 
@@ -18,12 +18,13 @@ and cross-references)
 | 🔍 | **Undocumented/Discrepancy** - Not in official Convex docs, or source code differs from docs |
 | 🛠️ | **Configurable** - Can be changed via environment variable for self-hosted deployments |
 
-**Notation**: Combinations like "✅ 🔒" mean "Verified Hard Limit"
+**Notation**: Combinations like “✅ 🔒” mean “Verified Hard Limit”
 
 **Related Research**:
 
-- [research-convex-backend-limits-implementation.md](../../../project/research/current/research-convex-backend-limits-implementation.md) —
-  Deep dive into source code implementation of limits and configurability for self-hosted deployments
+- [research-convex-backend-limits-implementation.md](../../../project/research/current/research-convex-backend-limits-implementation.md)
+  — Deep dive into source code implementation of limits and configurability for
+  self-hosted deployments
 
 * * *
 
@@ -111,9 +112,13 @@ The source code defaults in `crates/common/src/knobs.rs` are **2x more permissiv
 documented limits:
 
 - `TRANSACTION_MAX_READ_SIZE_BYTES`: 16 MiB (line 355-357)
+
 - `TRANSACTION_MAX_READ_SIZE_ROWS`: 32,000 (line 351-352)
+
 - `TRANSACTION_MAX_USER_WRITE_SIZE_BYTES`: 16 MiB (line 212-214)
+
 - `TRANSACTION_MAX_NUM_USER_WRITES`: 16,000 (line 208-209)
+
 - `TRANSACTION_MAX_READ_SET_INTERVALS`: 4,096 (line 360-361)
 
 **Why the discrepancy?** Convex Cloud likely enforces stricter limits for free/starter
@@ -131,9 +136,10 @@ export TRANSACTION_MAX_NUM_USER_WRITES=32000
 export TRANSACTION_MAX_USER_WRITE_SIZE_BYTES=33554432  # 32 MiB
 ```
 
-**Key Constraint**: The read limit includes **all scanned document bytes**, not
-just returned results.
-Convex does not support field projection—reading any document reads the entire document.
+**Key Constraint**: The read limit includes **all scanned document bytes**, not just
+returned results.
+Convex does not support field projection—reading any document reads the
+entire document.
 
 **Error Manifestation**: `"transaction exceeded resource limits"` runtime error
 
@@ -151,6 +157,7 @@ Convex does not support field projection—reading any document reads the entire
 **Sources**:
 
 - [Convex Limits - Database](https://docs.convex.dev/production/state/limits)
+
 - Source: `crates/common/src/knobs.rs:208-214, 351-361`
 
 ### 2. Document Size and Structure Limits
@@ -170,15 +177,15 @@ Convex does not support field projection—reading any document reads the entire
 **🔍 Note on Field Name vs Identifier Length**:
 
 The docs say 64 characters for field names, but source code shows **1,024 characters**
-for field names (`MAX_FIELD_NAME_LENGTH`) vs **64 characters** for identifiers like table
-names (`MAX_IDENTIFIER_LEN`). These are different limits.
+for field names (`MAX_FIELD_NAME_LENGTH`) vs **64 characters** for identifiers like
+table names (`MAX_IDENTIFIER_LEN`). These are different limits.
 
 **Key Constraints**:
 
 - Field names must be nonempty and cannot start with `$` or `_` (reserved for system
   fields)
 
-- Only "plain old JavaScript objects" are supported (no custom prototypes)
+- Only “plain old JavaScript objects” are supported (no custom prototypes)
 
 - Strings are stored as UTF-8 and must be valid Unicode sequences
 
@@ -235,8 +242,9 @@ const events = await ctx.db.query('events').collect();
 **🔍 Note on Concurrency Defaults**:
 
 The source code base constant `DEFAULT_APPLICATION_MAX_FUNCTION_CONCURRENCY` is **16**
-for all function types. Convex Cloud overrides these via a "big brain" service for
-Professional plan customers (256 queries/mutations, 1000 Node actions, etc.).
+for all function types.
+Convex Cloud overrides these via a “big brain” service for Professional plan customers
+(256 queries/mutations, 1000 Node actions, etc.).
 
 **🛠️ Self-Hosted Configuration**:
 
@@ -249,8 +257,8 @@ export APPLICATION_MAX_CONCURRENT_HTTP_ACTIONS=64
 export SCHEDULED_JOB_EXECUTION_PARALLELISM=20
 ```
 
-*Note: Professional plan limits (256, 1000, etc.) are enforced by Convex Cloud's
-"big brain" service, not by these code defaults.*
+*Note: Professional plan limits (256, 1000, etc.)
+are enforced by Convex Cloud’s “big brain” service, not by these code defaults.*
 
 **Execution Time Limits** ✅ 🔒 🛠️:
 
@@ -269,7 +277,8 @@ export SCHEDULED_JOB_EXECUTION_PARALLELISM=20
 | **Total scheduled args** | 16 MiB | `crates/common/src/knobs.rs:269-275` | ✅ 🔒 🛠️ 🔍 |
 
 **🔍 Note**: The source code default for scheduled args is **16 MiB**, not 8 MiB as
-sometimes documented. Variable: `TRANSACTION_MAX_SCHEDULED_TOTAL_ARGUMENT_SIZE_BYTES`
+sometimes documented.
+Variable: `TRANSACTION_MAX_SCHEDULED_TOTAL_ARGUMENT_SIZE_BYTES`
 
 **Key Constraints**:
 
@@ -557,8 +566,9 @@ official pricing.*
 
 **🔍 Index Count Discrepancy**:
 
-The source code constant `MAX_INDEXES_PER_TABLE` is **64**, not 32 as documented. This is
-the total across all index types (database indexes, text indexes, and vector indexes).
+The source code constant `MAX_INDEXES_PER_TABLE` is **64**, not 32 as documented.
+This is the total across all index types (database indexes, text indexes, and vector
+indexes).
 
 **Schema Limits (per deployment)** ✅ 🔒:
 
@@ -599,7 +609,9 @@ the total across all index types (database indexes, text indexes, and vector ind
 **Sources**:
 
 - [Convex Limits - Indexes](https://docs.convex.dev/production/state/limits)
-- Source: `crates/common/src/schemas/mod.rs`, `crates/common/src/bootstrap_model/index/mod.rs`
+
+- Source: `crates/common/src/schemas/mod.rs`,
+  `crates/common/src/bootstrap_model/index/mod.rs`
 
 ### 6. Function and Code Limits
 
@@ -634,13 +646,16 @@ the total across all index types (database indexes, text indexes, and vector ind
 
 **🔍 Env Var Count Discrepancy**:
 
-The source code default `ENV_VAR_LIMIT` is **1,000**, not 100 as documented. This is
-configurable via the `ENV_VAR_LIMIT` environment variable for self-hosted deployments.
+The source code default `ENV_VAR_LIMIT` is **1,000**, not 100 as documented.
+This is configurable via the `ENV_VAR_LIMIT` environment variable for self-hosted
+deployments.
 
 **Sources**:
 
 - [Convex Limits - Functions](https://docs.convex.dev/production/state/limits)
-- Source: `crates/common/src/knobs.rs:1537-1538`, `crates/common/src/types/environment_variables.rs`
+
+- Source: `crates/common/src/knobs.rs:1537-1538`,
+  `crates/common/src/types/environment_variables.rs`
 
 ### 7. Runtime Architecture and Isolation Model
 
@@ -862,13 +877,14 @@ Violating these rules leads to runtime errors or architectural issues.
 
    - For same-runtime calls, extract shared code into plain TypeScript helper functions
 
-   - **Official guidance** ([Convex Actions Docs](https://docs.convex.dev/functions/actions)):
-     > "If you want to call an action from another action that's in the same runtime,
-     > which is the normal case, the best way to do this is to pull the code you want
-     > to call into a TypeScript helper function and call the helper instead."
+   - **Official guidance** ([Convex Actions
+     Docs](https://docs.convex.dev/functions/actions)):
+     > “If you want to call an action from another action that’s in the same runtime,
+     > which is the normal case, the best way to do this is to pull the code you want to
+     > call into a TypeScript helper function and call the helper instead.”
 
-   - **Observed behavior**: Nested same-runtime action calls can silently timeout at
-     ~5 minutes (undocumented implementation detail)
+   - **Observed behavior**: Nested same-runtime action calls can silently timeout at ~5
+     minutes (undocumented implementation detail)
 
 ### Pattern: Helper Functions for Shared Logic
 
@@ -1365,10 +1381,12 @@ requirements apply beyond OCC conflict handling:
   avoid re-processing on retry
 
 **See Also**:
+
 - [research-durable-workflows-agent-conversations.md](../../../project/research/current/research-durable-workflows-agent-conversations.md)
-  § "Idempotency Requirements for Workflow Steps" for idempotency patterns
+  § “Idempotency Requirements for Workflow Steps” for idempotency patterns
+
 - [plan-2026-01-09-durable-workflows-agent-conversations-v3.md](../../../project/specs/active/plan-2026-01-09-durable-workflows-agent-conversations-v3.md)
-  § "Idempotency Contract" for implementation-ready details
+  § “Idempotency Contract” for implementation-ready details
 
 **🛠️ OCC Configuration (Self-Hosted)**:
 
@@ -1393,8 +1411,8 @@ export UDF_EXECUTOR_OCC_MAX_BACKOFF_MS=5000
 
 - [Convex Aggregate Component](https://github.com/get-convex/aggregate)
 
-- [@convex-dev/workpool](https://www.npmjs.com/package/@convex-dev/workpool) — "you
-  should ensure that each step is an idempotent Convex action"
+- [@convex-dev/workpool](https://www.npmjs.com/package/@convex-dev/workpool) — “you
+  should ensure that each step is an idempotent Convex action”
 
 - Source: `crates/common/src/knobs.rs:146-155`
 
@@ -1792,19 +1810,76 @@ runtime. While technically allowed, this pattern has efficiency issues (parent a
 wastes resources waiting idle) and observed timeout behavior that differs from
 documented limits.
 
+**🔍 Technical Root Cause (Source Code Verified)**:
+
+The 5-minute timeout comes from **two different sources** depending on the runtime:
+
+| Runtime Pattern | Timeout Source | Source Location | Env Var |
+| --- | --- | --- | --- |
+| **V8 → V8** | `V8_ACTION_SYSTEM_TIMEOUT` | `knobs.rs:745-746` | `V8_ACTION_SYSTEM_TIMEOUT_SECONDS` |
+| **Node.js → Any** | `HTTP_SERVER_TIMEOUT_DURATION` | `knobs.rs:1315-1316` | `HTTP_SERVER_TIMEOUT_SECONDS` |
+
+**V8 → V8 Nested Calls**:
+
+- When a V8 action calls `ctx.runAction()`, the user timeout (10 min) **pauses**
+
+- The system timeout (5 min) **starts counting** while waiting for the syscall
+
+- Enforced in `crates/isolate/src/timeout.rs` via `max_time_paused`
+
+**Node.js → Any Nested Calls**:
+
+- Node.js actions make HTTP POST callbacks to the backend (`/api/actions/action`)
+
+- The HTTP server applies a `TimeoutLayer` via Tower middleware
+  (`crates/common/src/http/mod.rs:655`)
+
+- Default timeout: 300 seconds (5 minutes)
+
+- When timeout hits, returns `StatusCode::REQUEST_TIMEOUT` with **empty error message**
+
+**Why Error Messages Are Empty**:
+
+When the HTTP timeout occurs, the error handler loses context:
+```rust
+// crates/common/src/http/mod.rs:652-654
+.layer(HandleErrorLayer::new(|_: BoxError| async {
+    StatusCode::REQUEST_TIMEOUT  // No error message preserved!
+}))
+```
+
+This results in errors with empty messages (`""` or `"Error"`) and stack traces
+containing `performAsyncSyscall`, making debugging extremely difficult.
+
+**🛠️ Self-Hosted Configuration**:
+
+For self-hosted deployments, both timeouts can be increased:
+```bash
+# For V8 → V8 nested calls (default 300s)
+export V8_ACTION_SYSTEM_TIMEOUT_SECONDS=600  # 10 minutes
+
+# For Node.js → Any nested calls (default 300s)
+export HTTP_SERVER_TIMEOUT_SECONDS=600  # 10 minutes
+```
+
+**⚠️ Important**: These limits are **not documented** in official Convex documentation.
+The official docs only mention the 10-minute action timeout but do not disclose these
+shorter timeouts that affect nested action calls.
+
 **Convex Official Guidance:**
 
 From [Actions Documentation](https://docs.convex.dev/functions/actions):
 
-> "If you want to call an action from another action that's in the same runtime, which
+> “If you want to call an action from another action that’s in the same runtime, which
 > is the normal case, the best way to do this is to pull the code you want to call into
-> a TypeScript helper function and call the helper instead."
+> a TypeScript helper function and call the helper instead.”
 
 From [Best Practices](https://docs.convex.dev/understanding/best-practices/):
 
-> "It counts as an extra function call with its own memory and CPU usage, while the
-> parent action is doing nothing except waiting for the result. Therefore, runAction
-> should almost always be replaced with calling a plain TypeScript function."
+> “It counts as an extra function call with its own memory and CPU usage, while the
+> parent action is doing nothing except waiting for the result.
+> Therefore, runAction should almost always be replaced with calling a plain TypeScript
+> function.”
 
 **Example Scenario**:
 
@@ -1877,16 +1952,19 @@ export const childAction = internalAction({
 **Impact on Durable Workflows**:
 
 When using `@convex-dev/workflow`, workflow step actions (called via `step.runAction()`)
-must be **leaf actions** that do not call `ctx.runAction()` internally. The workflow
-orchestrator runs in V8 and calls Node.js actions, which is a valid cross-runtime
-pattern. But if those Node.js actions then call other Node.js actions, you recreate
-the problematic nested same-runtime pattern.
+must be **leaf actions** that do not call `ctx.runAction()` internally.
+The workflow orchestrator runs in V8 and calls Node.js actions, which is a valid
+cross-runtime pattern.
+But if those Node.js actions then call other Node.js actions, you recreate the
+problematic nested same-runtime pattern.
 
 **See Also**:
+
 - [research-durable-workflows-agent-conversations.md](../../../project/research/current/research-durable-workflows-agent-conversations.md)
-  § "Nested Action Timeout Issue" for detailed analysis
+  § “Nested Action Timeout Issue” for detailed analysis
+
 - [plan-2026-01-09-durable-workflows-agent-conversations-v3.md](../../../project/specs/active/plan-2026-01-09-durable-workflows-agent-conversations-v3.md)
-  § "Leaf Action Requirement" for implementation guidance
+  § “Leaf Action Requirement” for implementation guidance
 
 **Best Practices**:
 
@@ -2010,7 +2088,7 @@ the problematic nested same-runtime pattern.
 
     - Audit codebase for `ctx.runAction` and verify each call crosses runtimes
 
-    - For durable workflows: ensure step actions are "leaf actions" (no nested calls)
+    - For durable workflows: ensure step actions are “leaf actions” (no nested calls)
 
 ### Storage and Cost Management
 
@@ -2131,6 +2209,8 @@ mailto:support@convex.dev.
 | **Execution Time** | Query/Mutation user timeout | 1 second | 1 second | ✅ 🔒 🛠️ |
 |  | Query/Mutation system timeout | N/A | 15 seconds | ✅ 🔒 🛠️ |
 |  | Action execution | 10 minutes | 10 minutes | ✅ 🔒 🛠️ |
+|  | V8 action system timeout | N/A | 5 minutes | 🔍 🛠️ |
+|  | HTTP server request timeout | N/A | 5 minutes | 🔍 🛠️ |
 | **Action Memory** | Convex Runtime | 64 MB | 64 MB | ✅ 🔄 🛠️ |
 |  | Node.js Runtime | 512 MB | 512 MB | ✅ 🔄 🛠️ |
 | **Function Arguments** | Convex Runtime | 8 MiB | **16 MiB** | ✅ 🔒 🔍 🛠️ |
@@ -2153,7 +2233,8 @@ mailto:support@convex.dev.
 |  | Name length | 40 chars | 40 chars | ✅ 🔒 |
 |  | Value length | N/A | 8,192 bytes | ✅ 🔒 |
 
-**Key**: 🔍 = Source code differs from docs; 🛠️ = Configurable via env var for self-hosted
+**Key**: 🔍 = Source code differs from docs; 🛠️ = Configurable via env var for
+self-hosted
 
 ### Common Error Messages and Solutions
 
@@ -2168,6 +2249,7 @@ mailto:support@convex.dev.
 | Slow query performance | Table scan without index | Create composite index matching query pattern; avoid post-index `.filter()` |
 | Storage overage charges | Data retention without archival | Implement archival policy; export historical data; delete old records |
 | `"1 unawaited operation"` warning | Dangling promises from `void fn()` or `fn().catch()` | Await all async operations; use try/catch for error handling |
+| Empty error message (`""` or `"Error"`) with `performAsyncSyscall` in stack | Nested `ctx.runAction()` exceeded 5-minute HTTP/system timeout | Use helper functions instead of nested action calls; ensure actions complete in <5 min |
 
 ### Decision Matrix: When to Use Each Pattern
 
@@ -2209,3 +2291,135 @@ constraints:
 | **10-50 KB** | Separate document or file storage | Use detail tables for on-demand fetch |
 | **50-900 KB** | **Must** use detail table or file storage | Approaching 1 MiB document limit |
 | **>900 KB** | **Must** use file storage with compression | Brotli compression for HTML/text (3:1 ratio) |
+
+* * *
+
+## Appendix A: Areas of Improvement for Convex
+
+This appendix identifies gaps and shortcomings in Convex’s official documentation and
+platform behavior discovered during this research.
+These are areas where improved documentation or platform changes would benefit
+developers.
+
+### A.1 Undocumented Limits 🔍
+
+The following limits are enforced by the Convex platform but are **not disclosed** in
+the official
+[Convex Limits documentation](https://docs.convex.dev/production/state/limits):
+
+| Limit | Value | Impact | Source | Status |
+| --- | --- | --- | --- | --- |
+| **V8 action system timeout** | 5 minutes | V8 actions waiting on async syscalls (like nested `ctx.runAction()`) timeout after 5 min, not 10 min | `knobs.rs:745-746` | 🔍 🛠️ |
+| **HTTP server request timeout** | 5 minutes | Node.js action callbacks timeout after 5 min; affects all nested action patterns | `knobs.rs:1315-1316` | 🔍 🛠️ |
+| **Log lines per function** | 256 lines | Logs are silently truncated; no error thrown | `helpers/mod.rs:29` | 🔍 |
+
+**Recommendation**: Convex should document these limits in the official limits page to
+prevent developers from encountering silent failures and difficult-to-debug timeout
+issues.
+
+### A.2 Poor Error Messages
+
+The following scenarios produce error messages that make debugging extremely difficult:
+
+| Scenario | Error Message | What Developers See | Underlying Cause |
+| --- | --- | --- | --- |
+| Nested Node.js action timeout | Empty string (`""` or `"Error"`) | Stack trace with `performAsyncSyscall`, no explanation | HTTP timeout returns `StatusCode::REQUEST_TIMEOUT` without preserving error context |
+| Nested V8 action timeout | Similar empty/generic error | Action appears to fail mysteriously at ~5 min | System timeout (not user timeout) exceeded |
+| Log line truncation | No error | Logs just stop appearing | 256 line limit reached |
+
+**Recommendation**: The HTTP timeout handler in `crates/common/src/http/mod.rs:652-654`
+should preserve the timeout error context.
+Consider:
+```rust
+// Current (loses context):
+.layer(HandleErrorLayer::new(|_: BoxError| async {
+    StatusCode::REQUEST_TIMEOUT
+}))
+
+// Better (preserves context):
+.layer(HandleErrorLayer::new(|err: BoxError| async move {
+    (StatusCode::REQUEST_TIMEOUT, format!("Request timeout: {}", err))
+}))
+```
+
+### A.3 Documentation vs Source Code Discrepancies 🔍
+
+Several documented limits are more restrictive than the actual source code defaults:
+
+| Limit | Documented | Actual (Source) | Ratio | Implication |
+| --- | --- | --- | --- | --- |
+| Transaction read size | 8 MiB | 16 MiB | 2x | Developers design around stricter limit unnecessarily |
+| Documents scanned | 16,384 | 32,000 | 2x | Same as above |
+| Documents written | 8,192 | 16,000 | 2x | Same as above |
+| Indexes per table | 32 | 64 | 2x | Developers may avoid creating useful indexes |
+| Environment variables | 100 | 1,000 | 10x | Unnecessary complexity in env var management |
+
+**Recommendation**: Convex should either:
+
+1. Update documentation to reflect actual defaults, with a note that cloud may enforce
+   stricter limits
+
+2. Clearly document that Convex Cloud uses different (stricter) limits than the source
+   code defaults
+
+3. Provide a way to query the actual limits in effect for a deployment
+
+### A.4 Missing Documentation Topics 🔍
+
+The following topics lack adequate documentation:
+
+| Topic | Gap | Impact |
+| --- | --- | --- |
+| **Nested action behavior** | Official docs say "inefficient" but don't mention 5-min timeout | Developers discover this through production failures |
+| **System timeout vs user timeout** | Not explained in action timeout docs | Timeout at 5 min seems like a bug when docs say 10 min |
+| **Runtime boundary semantics** | When crossing V8 ↔ Node.js is required vs optional | Developers don't understand when `ctx.runAction()` is appropriate |
+| **Self-hosted configuration** | Environment variables for adjusting limits | Self-hosted users can't optimize for their workloads |
+| **Error serialization across boundaries** | How errors are marshaled between runtimes | Developers lose error context without understanding why |
+
+**Recommendation**: Create documentation pages covering:
+
+- Action timeout architecture (user timeout, system timeout, HTTP timeout)
+
+- Cross-runtime calling patterns and best practices
+
+- Self-hosted deployment configuration reference
+
+### A.5 Platform Behavior Issues
+
+| Issue | Description | User Impact |
+| --- | --- | --- |
+| **Silent log truncation** | Logs stop at 256 lines with no warning | Developers miss critical debugging info |
+| **Empty timeout errors** | HTTP timeouts return empty error body | Hours of debugging for simple timeout issues |
+| **Inconsistent timeout behavior** | Same-runtime nested calls timeout earlier than documented | Breaks assumptions based on "10 minute action limit" |
+
+**Recommendation**: Consider platform changes:
+
+1. Add a log warning when approaching 256 line limit (e.g., “Warning: 250/256 log lines
+   used”)
+
+2. Include timeout reason in error responses (e.g., “Action timed out after 300s (HTTP
+   server timeout)”)
+
+3. Document all timeout sources that can affect an action’s execution
+
+### A.6 Summary
+
+The primary areas where Convex documentation and platform behavior could improve:
+
+1. **Disclose hidden timeouts**: V8 system timeout (5 min) and HTTP timeout (5 min)
+   should be documented alongside the 10-minute action limit
+
+2. **Improve error messages**: Preserve error context across runtime boundaries,
+   especially for timeout errors
+
+3. **Reconcile documentation with source code**: Either update docs to match source or
+   explain why cloud limits differ
+
+4. **Document edge cases**: Nested action patterns, runtime boundaries, and self-hosted
+   configuration options
+
+5. **Add runtime warnings**: For approaching limits like log lines, give developers a
+   warning before silent truncation
+
+These improvements would significantly reduce developer friction and debugging time for
+Convex applications at scale.
