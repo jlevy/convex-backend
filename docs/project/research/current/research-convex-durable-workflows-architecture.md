@@ -467,3 +467,58 @@ DEFAULT_RETRY_BEHAVIOR = {
   base: 2,
 };
 ```
+
+## Appendix B: Convex Scheduler Implementation
+
+**Source**: `crates/application/src/scheduled_jobs/mod.rs`
+
+### Event-Driven Scheduling (NOT Polling)
+
+The Convex scheduler is **event-driven**, not poll-based. It uses three wake sources:
+
+```rust
+// From scheduled_jobs/mod.rs:303-322
+select_biased! {
+    // 1. Job finished notifications (immediate)
+    num_jobs = self.job_finished_rx.recv_many(...) => { ... },
+
+    // 2. Timer for next scheduled job (or 5s if behind)
+    _ = next_job_future.fuse() => { },
+
+    // 3. Database subscription invalidation (immediate)
+    _ = subscription.wait_for_invalidation().fuse() => { },
+}
+```
+
+### The 5-Second Fallback (Clarification)
+
+The "5-second polling" mentioned in some discussions is **NOT** regular polling:
+
+```rust
+// From scheduled_jobs/mod.rs:288-293
+let wait_time = next_job_ts.duration_since(now).unwrap_or_else(|_| {
+    // If we're behind, re-run this loop every 5 seconds to log the gauge above and
+    // track how far we're behind in our metrics.
+    Duration::from_secs(5)
+});
+```
+
+**This 5-second interval is ONLY used when**:
+1. The scheduler is **already behind** (has jobs past due)
+2. It's used for **logging metrics** about how far behind the scheduler is
+
+**Normal operation** uses:
+1. **Database subscriptions** that wake immediately when relevant data changes
+2. **Direct timer waits** until the next job's scheduled time
+
+### Implications for Workflow Performance
+
+The scheduler itself adds minimal latency because:
+1. When a workflow step completes and writes to the DB, the subscription wakes the scheduler immediately
+2. The scheduler doesn't wait for a polling interval - it's event-driven
+3. The overhead comes from the workflow/workpool layer, not the core scheduler
+
+**Verified**: The inter-step gap is NOT caused by scheduler polling. It comes from:
+- Multiple mutations in the workflow/workpool coordination
+- Journal replay on each workflow handler invocation
+- Workpool main loop processing (segment-based, 100ms granularity)
