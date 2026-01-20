@@ -137,13 +137,6 @@ use common::{
     },
     RequestId,
 };
-use convex_fivetran_destination::{
-    api_types::{
-        BatchWriteRow,
-        DeleteType,
-    },
-    constants::FIVETRAN_PRIMARY_KEY_INDEX_DESCRIPTOR,
-};
 use cron_jobs::CronJobExecutor;
 use database::{
     unauthorized_error,
@@ -179,6 +172,13 @@ use file_storage::{
     FileRangeStream,
     FileStorage,
     FileStream,
+};
+use fivetran_destination::{
+    api_types::{
+        BatchWriteRow,
+        DeleteType,
+    },
+    constants::FIVETRAN_PRIMARY_KEY_INDEX_DESCRIPTOR,
 };
 use function_log::{
     FunctionExecution,
@@ -310,7 +310,6 @@ use search::{
     },
 };
 use semver::Version;
-use serde_json::Value as JsonValue;
 use short_future::ShortBoxFuture;
 use snapshot_import::start_stored_import;
 use storage::{
@@ -325,6 +324,7 @@ use storage::{
     Upload,
 };
 use sync_types::{
+    types::SerializedArgs,
     AuthenticationToken,
     CanonicalizedModulePath,
     CanonicalizedUdfPath,
@@ -347,7 +347,6 @@ use udf::{
         CONVEX_ORIGIN,
         CONVEX_SITE,
     },
-    helpers::parse_udf_args,
     HttpActionRequest,
     HttpActionResponseStreamer,
     HttpActionResult,
@@ -613,7 +612,7 @@ pub async fn create_storage<RT: Runtime>(
     storage_type: &model::database_globals::types::StorageType,
     use_case: StorageUseCase,
 ) -> anyhow::Result<Arc<dyn Storage>> {
-    Ok(match storage_type {
+    let storage: Arc<dyn Storage> = match storage_type {
         model::database_globals::types::StorageType::S3 { s3_prefix } => {
             Arc::new(S3Storage::for_use_case(use_case, s3_prefix.clone(), runtime).await?)
         },
@@ -622,7 +621,8 @@ pub async fn create_storage<RT: Runtime>(
             tracing::info!("{use_case} storage path: {:?}", storage.path());
             Arc::new(storage)
         },
-    })
+    };
+    Ok(storage)
 }
 
 impl<RT: Runtime> Application<RT> {
@@ -776,6 +776,7 @@ impl<RT: Runtime> Application<RT> {
             fetch_client.clone(),
             instance_name.clone(),
             log_streaming_allowed,
+            database.usage_counter(),
         )
         .await;
 
@@ -1041,7 +1042,7 @@ impl<RT: Runtime> Application<RT> {
         &self,
         request_id: RequestId,
         path: PublicFunctionPath,
-        args: Vec<JsonValue>,
+        args: SerializedArgs,
         identity: Identity,
         caller: FunctionCaller,
     ) -> anyhow::Result<RedactedQueryReturn> {
@@ -1055,7 +1056,7 @@ impl<RT: Runtime> Application<RT> {
         &self,
         request_id: RequestId,
         path: PublicFunctionPath,
-        args: Vec<JsonValue>,
+        args: SerializedArgs,
         identity: Identity,
         ts: Timestamp,
         journal: Option<Option<String>>,
@@ -1127,7 +1128,7 @@ impl<RT: Runtime> Application<RT> {
         &self,
         request_id: RequestId,
         path: PublicFunctionPath,
-        args: Vec<JsonValue>,
+        args: SerializedArgs,
         identity: Identity,
         // Identifier used to make this mutation idempotent.
         mutation_identifier: Option<SessionRequestIdentifier>,
@@ -1193,7 +1194,7 @@ impl<RT: Runtime> Application<RT> {
         &self,
         request_id: RequestId,
         name: PublicFunctionPath,
-        args: Vec<JsonValue>,
+        args: SerializedArgs,
         identity: Identity,
         caller: FunctionCaller,
     ) -> anyhow::Result<Result<RedactedActionReturn, RedactedActionError>> {
@@ -1326,7 +1327,7 @@ impl<RT: Runtime> Application<RT> {
         &self,
         request_id: RequestId,
         path: CanonicalizedComponentFunctionPath,
-        args: Vec<JsonValue>,
+        args: SerializedArgs,
         identity: Identity,
         caller: FunctionCaller,
     ) -> anyhow::Result<Result<FunctionReturn, FunctionError>> {
@@ -2329,7 +2330,7 @@ impl<RT: Runtime> Application<RT> {
         &self,
         request_id: RequestId,
         module: ModuleConfig,
-        args: Vec<JsonValue>,
+        args: SerializedArgs,
         identity: Identity,
         caller: FunctionCaller,
         component: ComponentId,
@@ -2456,11 +2457,10 @@ impl<RT: Runtime> Application<RT> {
             component: component_path,
             udf_path: CanonicalizedUdfPath::new(module_path, function_name),
         };
-        let arguments = parse_udf_args(&path.udf_path, args)?;
         let (result, log_lines) = match analyzed_function.udf_type {
             UdfType::Query => {
                 self.runner
-                    .run_query_without_caching(request_id.clone(), tx, path, arguments, caller)
+                    .run_query_without_caching(request_id.clone(), tx, path, args, caller)
                     .await
             },
             UdfType::Mutation => {

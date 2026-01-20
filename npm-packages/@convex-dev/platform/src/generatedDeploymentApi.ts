@@ -238,6 +238,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/unpause_deployment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unpause deployment
+         * @description Reenables a deployment that was previously paused. The deployment will
+         *     resume normal operation, including any scheduled jobs that were queued while
+         *     paused.
+         */
+        post: operations["unpause_deployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -256,6 +278,8 @@ export interface components {
             id: string;
             /** @description Optional ingest endpoint for Axiom */
             ingestUrl?: string | null;
+            /** @description Status of the log stream */
+            status: components["schemas"]["LogStreamStatus"];
         };
         CreateAxiomLogStreamArgs: {
             /** @description Axiom API key for authentication. */
@@ -338,6 +362,8 @@ export interface components {
             service?: string | null;
             /** @description Location of your Datadog deployment. */
             siteLocation: components["schemas"]["DatadogSiteLocation"];
+            /** @description Status of the log stream */
+            status: components["schemas"]["LogStreamStatus"];
         };
         /**
          * @description The Datadog deployment locations, used to construct URLs
@@ -366,6 +392,24 @@ export interface components {
             /** @enum {string} */
             logStreamType: "sentry";
         });
+        /** @description Status of a log stream */
+        LogStreamStatus: {
+            /** @enum {string} */
+            type: "pending";
+        } | {
+            /** @enum {string} */
+            type: "restarting";
+        } | {
+            reason: string;
+            /** @enum {string} */
+            type: "failed";
+        } | {
+            /** @enum {string} */
+            type: "active";
+        } | {
+            /** @enum {string} */
+            type: "deleting";
+        };
         /** @enum {string} */
         RequestDestination: "convexCloud" | "convexSite";
         RotateLogStreamSecretResponse: {
@@ -376,6 +420,8 @@ export interface components {
         /** SentryConfig */
         SentryLogStreamConfig: {
             id: string;
+            /** @description Status of the log stream */
+            status: components["schemas"]["LogStreamStatus"];
             /** @description Tags to add to all events routed to Sentry. */
             tags?: {
                 [key: string]: string;
@@ -452,6 +498,8 @@ export interface components {
             /** @description Use this secret to verify webhook signatures. */
             hmacSecret: string;
             id: string;
+            /** @description Status of the log stream */
+            status: components["schemas"]["LogStreamStatus"];
             /** @description URL to send logs to. */
             url: string;
         };
@@ -476,6 +524,7 @@ export type DatadogSiteLocation = components['schemas']['DatadogSiteLocation'];
 export type GetCanonicalUrlsResponse = components['schemas']['GetCanonicalUrlsResponse'];
 export type ListEnvVarsResponse = components['schemas']['ListEnvVarsResponse'];
 export type LogStreamConfig = components['schemas']['LogStreamConfig'];
+export type LogStreamStatus = components['schemas']['LogStreamStatus'];
 export type RequestDestination = components['schemas']['RequestDestination'];
 export type RotateLogStreamSecretResponse = components['schemas']['RotateLogStreamSecretResponse'];
 export type SentryLogStreamConfig = components['schemas']['SentryLogStreamConfig'];
@@ -702,6 +751,23 @@ export interface operations {
         };
     };
     pause_deployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unpause_deployment: {
         parameters: {
             query?: never;
             header?: never;

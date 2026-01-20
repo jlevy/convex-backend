@@ -1,6 +1,4 @@
 import { chalkStderr } from "chalk";
-import equal from "deep-equal";
-import { EOL } from "os";
 import path from "path";
 import { z } from "zod";
 import { Context } from "../../bundler/context.js";
@@ -11,6 +9,7 @@ import {
   logFailure,
   logFinishedStep,
   logMessage,
+  logWarning,
   showSpinner,
 } from "../../bundler/log.js";
 import {
@@ -40,31 +39,36 @@ import {
   printLocalDeploymentOnError,
 } from "./localDeployment/errors.js";
 import { debugIsolateBundlesSerially } from "../../bundler/debugBundle.js";
-import { ensureWorkosEnvironmentProvisioned } from "./workos/workos.js";
+import { DeploymentType } from "./api.js";
 export { productionProvisionHost, provisionHost } from "./utils/utils.js";
 
-/** Type representing auth configuration. */
-export interface AuthInfo {
-  // Provider-specific application identifier. Corresponds to the `aud` field in an OIDC token.
-  applicationID: string;
-  // Domain used for authentication. Corresponds to the `iss` field in an OIDC token.
-  domain: string;
+/** Type representing WorkOS AuthKit integration configuration. */
+export interface AuthKitConfigureSettings {
+  redirectUris?: string[];
+  appHomepageUrl?: string;
+  corsOrigins?: string[];
 }
 
+export interface AuthKitEnvironmentConfig {
+  environmentType?: "development" | "staging" | "production";
+  configure?: false | AuthKitConfigureSettings;
+  localEnvVars?: false | Record<string, string>;
+}
+
+export interface AuthKitConfig {
+  dev?: AuthKitEnvironmentConfig;
+  preview?: AuthKitEnvironmentConfig;
+  prod?: AuthKitEnvironmentConfig;
+}
 /**
- * convex.json file parsing and rewriting notes
+ * convex.json file parsing notes
+ *
  * - Unknown fields at the top level and in node and codegen are preserved
  *   so that older CLI versions can deploy new projects (this functionality
  *   will be removed in the future).
- * - Deprecated values are tracked only so that we can delete them, or
- *   (for authInfo) migrate to a convex/auth.config.ts and delete.
- * - Default values for properties with an obvious default are removed in order
- *   to keep the config file small so we can delete the file if it only has
- *   deprecated properties or obvious defaults.
- * - convex.json does not allow comments, it will be rewritten
- *   automatically. This could change in the future, a property config
- *   file makes more sense. Previously automatically set values like
- *   productionUrl were written to it, but it's becoming more like a config file.
+ * - convex.json does not allow comments, but this could change in the future.
+ *   Previously it contained automatically set values like productionUrl
+ *   but it's more like a config file now.
  */
 
 /** Type representing Convex project configuration. */
@@ -76,14 +80,6 @@ export interface ProjectConfig {
     nodeVersion?: string | undefined;
   };
   generateCommonJSApi: boolean;
-  // deprecated
-  project?: string | undefined;
-  // deprecated
-  team?: string | undefined;
-  // deprecated
-  prodUrl?: string | undefined;
-  // deprecated
-  authInfo?: AuthInfo[] | undefined;
 
   codegen: {
     staticApi: boolean;
@@ -97,16 +93,10 @@ export interface ProjectConfig {
   };
 
   typescriptCompiler?: TypescriptCompiler;
-}
 
-/** Type written to convex.json (where we elide deleted default values)  */
-type DefaultsRemovedProjectConfig = Partial<
-  Omit<ProjectConfig, "node" | "codegen" | "bundler"> & {
-    node: Partial<ProjectConfig["node"]>;
-    codegen: Partial<ProjectConfig["codegen"]>;
-    bundler: Partial<ProjectConfig["bundler"]>;
-  }
->;
+  // WorkOS AuthKit integration configuration
+  authKit?: AuthKitConfig | undefined;
+}
 
 export interface Config {
   projectConfig: ProjectConfig;
@@ -137,29 +127,122 @@ export function usesComponentApiImports(projectConfig: ProjectConfig): boolean {
   return projectConfig.codegen.legacyComponentApi === false;
 }
 
-/** Check if object is of AuthInfo type. */
-function isAuthInfo(object: any): object is AuthInfo {
-  return (
-    "applicationID" in object &&
-    typeof object.applicationID === "string" &&
-    "domain" in object &&
-    typeof object.domain === "string"
+/**
+ * Get the authKit configuration from convex.json.
+ */
+export async function getAuthKitConfig(
+  ctx: Context,
+  projectConfig: ProjectConfig,
+): Promise<AuthKitConfig | undefined> {
+  // If there's an explicit authKit config, use it
+  if ("authKit" in projectConfig) {
+    return projectConfig.authKit;
+  }
+
+  // TODO remove this after a few versions
+  // Migration help: is this one of the hardcoded templates that has special
+  // behavior without a convex.json? Encourage them to upgrade the template.
+  const homepage = await currentPackageHomepage(ctx);
+  const isOldWorkOSTemplate = !!(
+    homepage &&
+    [
+      "https://github.com/workos/template-convex-nextjs-authkit/#readme",
+      "https://github.com/workos/template-convex-react-vite-authkit/#readme",
+      "https://github.com:workos/template-convex-react-vite-authkit/#readme",
+      "https://github.com/workos/template-convex-tanstack-start-authkit/#readme",
+    ].includes(homepage)
   );
+
+  if (isOldWorkOSTemplate) {
+    logWarning(
+      "The template this project is based on has been updated to work with this version of Convex.",
+    );
+    logWarning(
+      "Please copy the convex.json from the latest template version or add an 'authKit' section.",
+    );
+    logMessage("Learn more at https://docs.convex.dev/auth/authkit");
+  }
 }
 
-function isAuthInfos(object: any): object is AuthInfo[] {
-  return Array.isArray(object) && object.every((item: any) => isAuthInfo(item));
+export async function getAuthKitEnvironmentConfig(
+  ctx: Context,
+  projectConfig: ProjectConfig,
+  deploymentType: "dev" | "preview" | "prod",
+): Promise<AuthKitEnvironmentConfig | undefined> {
+  const authKitConfig = await getAuthKitConfig(ctx, projectConfig);
+  return authKitConfig?.[deploymentType];
 }
 
 /** Error parsing ProjectConfig representation. */
 class ParseError extends Error {}
 
-// Zod schema for ProjectConfig
-const AuthInfoSchema = z.object({
-  applicationID: z.string(),
-  domain: z.string(),
+// WorkOS AuthKit configuration schemas
+const AuthKitConfigureSchema = z.union([
+  z.literal(false),
+  z.object({
+    redirectUris: z.array(z.string()).optional(),
+    appHomepageUrl: z.string().optional(),
+    corsOrigins: z.array(z.string()).optional(),
+  }),
+]);
+
+const AuthKitLocalEnvVarsSchema = z.union([
+  z.literal(false),
+  z.record(z.string()),
+]);
+
+const AuthKitEnvironmentConfigSchema = z.object({
+  environmentType: z.enum(["development", "staging", "production"]).optional(),
+  configure: AuthKitConfigureSchema.optional(),
+  localEnvVars: AuthKitLocalEnvVarsSchema.optional(),
 });
 
+const AuthKitConfigSchema = z
+  .object({
+    dev: AuthKitEnvironmentConfigSchema.optional(),
+    preview: AuthKitEnvironmentConfigSchema.optional(),
+    prod: AuthKitEnvironmentConfigSchema.optional(),
+  })
+  .refine(
+    (data) => {
+      // Validation: environmentType only allowed in prod
+      const devEnvType = data.dev?.environmentType;
+      const previewEnvType = data.preview?.environmentType;
+      if (devEnvType || previewEnvType) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "authKit.environmentType is only allowed in the prod section",
+      path: ["environmentType"],
+    },
+  )
+  .refine(
+    (data) => {
+      // Validation: localEnvVars only allowed for dev
+      // Check preview doesn't have localEnvVars
+      if (
+        data.preview?.localEnvVars !== undefined &&
+        data.preview?.localEnvVars !== false
+      ) {
+        return false;
+      }
+      // Check prod doesn't have localEnvVars
+      if (
+        data.prod?.localEnvVars !== undefined &&
+        data.prod?.localEnvVars !== false
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message:
+        "authKit.localEnvVars is only supported for dev deployments. Preview and prod deployments must configure environment variables directly in the deployment platform.",
+      path: ["localEnvVars"],
+    },
+  );
 // Separate Node and Codegen schemas so we can parse these loose or strict
 const NodeSchema = z.object({
   externalPackages: z
@@ -190,7 +273,7 @@ const CodegenSchema = z.object({
 const BundlerSchema = z.object({
   includeSourcesContent: z
     .boolean()
-    .default(true)
+    .default(false)
     .describe(
       "Whether to include original source code in source maps. Set to false to reduce bundle size.",
     ),
@@ -221,7 +304,7 @@ const createProjectConfigSchema = (strict: boolean) => {
       staticApi: false,
       staticDataModel: false,
     }),
-    bundler: bundlerSchema.default({ includeSourcesContent: true }).optional(),
+    bundler: bundlerSchema.default({ includeSourcesContent: false }).optional(),
     generateCommonJSApi: z.boolean().default(false),
     typescriptCompiler: z
       .enum(["tsc", "tsgo"])
@@ -232,13 +315,14 @@ const createProjectConfigSchema = (strict: boolean) => {
 
     // Optional $schema field for JSON schema validation in editors
     $schema: z.string().optional(),
+    // WorkOS AuthKit integration configuration
+    authKit: AuthKitConfigSchema.optional(),
 
     // Deprecated fields that have been deprecated for years, only here so we
     // know it's safe to delete them.
     project: z.string().optional(),
     team: z.string().optional(),
     prodUrl: z.string().optional(),
-    authInfo: z.array(AuthInfoSchema).optional(),
   });
 
   // Apply strict or passthrough BEFORE refine
@@ -368,7 +452,6 @@ export async function parseProjectConfig(
 // the fields we care about.
 function parseBackendConfig(obj: any): {
   functions: string;
-  authInfo?: AuthInfo[];
   nodeVersion?: string;
 } {
   function throwParseError(message: string) {
@@ -379,14 +462,9 @@ function parseBackendConfig(obj: any): {
   if (typeof obj !== "object") {
     throwParseError("Expected an object");
   }
-  const { functions, authInfo, nodeVersion } = obj;
+  const { functions, nodeVersion } = obj;
   if (typeof functions !== "string") {
     throwParseError("Expected functions to be a string");
-  }
-
-  // Allow the `authInfo` key to be omitted
-  if ((authInfo ?? null) !== null && !isAuthInfos(authInfo)) {
-    throwParseError("Expected authInfo to be type AuthInfo[]");
   }
 
   if (typeof nodeVersion !== "undefined" && typeof nodeVersion !== "string") {
@@ -395,7 +473,6 @@ function parseBackendConfig(obj: any): {
 
   return {
     functions,
-    ...((authInfo ?? null) !== null ? { authInfo: authInfo } : {}),
     ...((nodeVersion ?? null) !== null ? { nodeVersion: nodeVersion } : {}),
   };
 }
@@ -498,24 +575,6 @@ export async function readProjectConfig(ctx: Context): Promise<{
     projectConfig,
     configPath,
   };
-}
-
-export async function enforceDeprecatedConfigField(
-  ctx: Context,
-  config: ProjectConfig,
-  field: "team" | "project" | "prodUrl",
-): Promise<string> {
-  const value = config[field];
-  if (typeof value === "string") {
-    return value;
-  }
-  const err = new ParseError(`Expected ${field} to be a string`);
-  return await ctx.crash({
-    exitCode: 1,
-    errorType: "invalid filesystem data",
-    errForSentry: err,
-    printedMessage: `Error: Parsing convex.json failed:\n${chalkStderr.gray(err.toString())}`,
-  });
 }
 
 /**
@@ -664,149 +723,22 @@ export async function readConfig(
   return { config, configPath, bundledModuleInfos };
 }
 
-export async function upgradeOldAuthInfoToAuthConfig(
-  ctx: Context,
-  config: ProjectConfig,
-  functionsPath: string,
-) {
-  if (config.authInfo !== undefined) {
-    const authConfigPathJS = path.resolve(functionsPath, "auth.config.js");
-    const authConfigPathTS = path.resolve(functionsPath, "auth.config.js");
-    const authConfigPath = ctx.fs.exists(authConfigPathJS)
-      ? authConfigPathJS
-      : authConfigPathTS;
-    const authConfigRelativePath = path.join(
-      config.functions,
-      ctx.fs.exists(authConfigPathJS) ? "auth.config.js" : "auth.config.ts",
-    );
-    if (ctx.fs.exists(authConfigPath)) {
-      await ctx.crash({
-        exitCode: 1,
-        errorType: "invalid filesystem data",
-        printedMessage:
-          `Cannot set auth config in both \`${authConfigRelativePath}\` and convex.json,` +
-          ` remove it from convex.json`,
-      });
-    }
-    if (config.authInfo.length > 0) {
-      const providersStringLines = JSON.stringify(
-        config.authInfo,
-        null,
-        2,
-      ).split(EOL);
-      const indentedProvidersString = [providersStringLines[0]]
-        .concat(providersStringLines.slice(1).map((line) => `  ${line}`))
-        .join(EOL);
-      ctx.fs.writeUtf8File(
-        authConfigPath,
-        `\
-  export default {
-    providers: ${indentedProvidersString},
-  };`,
-      );
-      logMessage(
-        chalkStderr.yellowBright(
-          `Moved auth config from config.json to \`${authConfigRelativePath}\``,
-        ),
-      );
-    }
-    delete config.authInfo;
-  }
-  return config;
-}
-
-/** Write the config to `convex.json` in the current working directory. */
+/**
+ * Ensure the functions directory exists.
+ *
+ * Note: This function no longer writes to or deletes `convex.json`. The config
+ * file is now treated as user-owned and is not modified by the CLI. This allows
+ * users to maintain their preferred formatting and any comments they may add
+ * (if we later support JSONC parsing).
+ */
 export async function writeProjectConfig(
   ctx: Context,
   projectConfig: ProjectConfig,
-  { deleteIfAllDefault }: { deleteIfAllDefault: boolean } = {
-    deleteIfAllDefault: false,
-  },
 ) {
   const configPath = await configFilepath(ctx);
-  const strippedConfig = filterWriteableConfig(stripDefaults(projectConfig));
-  if (Object.keys(strippedConfig).length > 0) {
-    try {
-      const contents = JSON.stringify(strippedConfig, undefined, 2) + "\n";
-      ctx.fs.writeUtf8File(configPath, contents, 0o644);
-    } catch (err) {
-      return await ctx.crash({
-        exitCode: 1,
-        errorType: "invalid filesystem data",
-        errForSentry: err,
-        printedMessage:
-          `Error: Unable to write project config file "${configPath}" in current directory\n` +
-          "  Are you running this command from the root directory of a Convex project?",
-      });
-    }
-  } else if (deleteIfAllDefault && ctx.fs.exists(configPath)) {
-    ctx.fs.unlink(configPath);
-    logMessage(
-      chalkStderr.yellowBright(
-        `Deleted ${configPath} since it completely matched defaults`,
-      ),
-    );
-  }
   ctx.fs.mkdir(functionsDir(configPath, projectConfig), {
     allowExisting: true,
   });
-}
-
-function stripDefaults(
-  projectConfig: ProjectConfig,
-): DefaultsRemovedProjectConfig {
-  const stripped: DefaultsRemovedProjectConfig = JSON.parse(
-    JSON.stringify(projectConfig),
-  );
-  if (stripped.functions === DEFAULT_FUNCTIONS_PATH) {
-    delete stripped.functions;
-  }
-  if (Array.isArray(stripped.authInfo) && stripped.authInfo.length === 0) {
-    delete stripped.authInfo;
-  }
-  if (stripped.node!.externalPackages!.length === 0) {
-    delete stripped.node!.externalPackages;
-  }
-  if (stripped.generateCommonJSApi === false) {
-    delete stripped.generateCommonJSApi;
-  }
-  // Remove "node" field if it has nothing nested under it
-  if (Object.keys(stripped!.node!).length === 0) {
-    delete stripped.node;
-  }
-  if (stripped.codegen!.staticApi === false) {
-    delete stripped.codegen!.staticApi;
-  }
-  if (stripped.codegen!.staticDataModel === false) {
-    delete stripped.codegen!.staticDataModel;
-  }
-
-  // `"fileType"` and `"legacyComponentApi"` are optional and undefined by
-  // default, and the behavior of undefined may change in the future for these
-  // so we don't want to strip them.
-
-  if (Object.keys(stripped.codegen!).length === 0) {
-    delete stripped.codegen;
-  }
-
-  if (stripped.bundler?.includeSourcesContent === true) {
-    delete stripped.bundler!.includeSourcesContent;
-  }
-  if (stripped.bundler && Object.keys(stripped.bundler).length === 0) {
-    delete stripped.bundler;
-  }
-
-  return stripped;
-}
-
-function filterWriteableConfig(
-  projectConfig: DefaultsRemovedProjectConfig,
-): DefaultsRemovedProjectConfig {
-  const writeable: any = { ...projectConfig };
-  delete writeable.project;
-  delete writeable.team;
-  delete writeable.prodUrl;
-  return writeable;
 }
 
 export function removedExistingConfig(
@@ -923,55 +855,6 @@ export function diffConfig(
   newConfig: Config,
 ): { diffString: string } {
   let diff = "";
-  const droppedAuth = [];
-  if (
-    oldConfig.projectConfig.authInfo !== undefined &&
-    newConfig.projectConfig.authInfo !== undefined
-  ) {
-    for (const oldAuth of oldConfig.projectConfig.authInfo) {
-      let matches = false;
-      for (const newAuth of newConfig.projectConfig.authInfo) {
-        if (equal(oldAuth, newAuth)) {
-          matches = true;
-          break;
-        }
-      }
-      if (!matches) {
-        droppedAuth.push(oldAuth);
-      }
-    }
-    if (droppedAuth.length > 0) {
-      diff += "Remove the following auth providers:\n";
-      for (const authInfo of droppedAuth) {
-        diff += "[-] " + JSON.stringify(authInfo) + "\n";
-      }
-    }
-
-    const addedAuth = [];
-    for (const newAuth of newConfig.projectConfig.authInfo) {
-      let matches = false;
-      for (const oldAuth of oldConfig.projectConfig.authInfo) {
-        if (equal(newAuth, oldAuth)) {
-          matches = true;
-          break;
-        }
-      }
-      if (!matches) {
-        addedAuth.push(newAuth);
-      }
-    }
-    if (addedAuth.length > 0) {
-      diff += "Add the following auth providers:\n";
-      for (const auth of addedAuth) {
-        diff += "[+] " + JSON.stringify(auth) + "\n";
-      }
-    }
-  } else if (
-    (oldConfig.projectConfig.authInfo !== undefined) !==
-    (newConfig.projectConfig.authInfo !== undefined)
-  ) {
-    diff += "Moved auth config into auth.config.ts\n";
-  }
 
   let versionMessage = "";
   const matches = oldConfig.udfServerVersion === newConfig.udfServerVersion;
@@ -1015,11 +898,14 @@ export async function handlePushConfigError(
   error: unknown,
   defaultMessage: string,
   deploymentName: string | null,
-  deployment?: {
-    deploymentUrl: string;
-    adminKey: string;
-    deploymentNotice: string;
-  },
+  deployment:
+    | {
+        deploymentUrl: string;
+        adminKey: string;
+        deploymentNotice: string;
+      }
+    | undefined,
+  _deploymentType: DeploymentType | undefined,
 ): Promise<never> {
   const data: ErrorData | undefined =
     error instanceof ThrowingFetchError ? error.serverErrorData : undefined;
@@ -1028,51 +914,22 @@ export async function handlePushConfigError(
     const [, variableName] =
       errorMessage.match(/Environment variable (\S+)/i) ?? [];
 
-    // WORKOS_CLIENT_ID is a special environment variable because cloud Convex
-    // deployments may be able to supply it by provisioning a fresh WorkOS
-    // environment on demand.
+    // DEPRECATED: This error path provisioning is being phased out in favor of
+    // pre-flight provisioning that happens before the client bundle build.
+    // We keep minimal logic here for backwards compatibility with older templates
+    // that may still rely on this path.
     if (variableName === "WORKOS_CLIENT_ID" && deploymentName && deployment) {
-      // Initially only specific templates create WorkOS environments on demand
-      // because the local environemnt variables are hardcoded for Vite and Next.js.
-      const homepage = await currentPackageHomepage(ctx);
-      const autoProvisionIfWorkOSTeamAssociated = !!(
-        homepage &&
-        [
-          // FIXME: We don't want to rely on `homepage` from `package.json` for this
-          // because it's brittle, and because AuthKit templates are now in get-convex/templates
-          "https://github.com/workos/template-convex-nextjs-authkit/#readme",
-          "https://github.com/workos/template-convex-react-vite-authkit/#readme",
-          "https://github.com:workos/template-convex-react-vite-authkit/#readme",
-          "https://github.com/workos/template-convex-tanstack-start-authkit/#readme",
-        ].includes(homepage)
+      // For backwards compatibility with templates that haven't been updated,
+      // we'll still show a helpful error message directing users to configure WorkOS.
+      // But we no longer do automatic provisioning here since it happens too late
+      // (after the client bundle has already been built with missing env vars).
+      logWarning(
+        "WORKOS_CLIENT_ID is not set; you can set it manually on the deployment or for hosted Convex deployments, use auto-provisioning.",
       );
-      // Initially only specific templates offer team creation.
-      // Until this changes it can be done manually with a CLI command.
-      const offerToAssociateWorkOSTeam = autoProvisionIfWorkOSTeamAssociated;
-      // Initialy only specific template auto-configure WorkOS environments
-      // with AuthKit config because these values are currently heuristics.
-      // This will be some more explicit opt-in in the future.
-      const autoConfigureAuthkitConfig = autoProvisionIfWorkOSTeamAssociated;
-
-      const result = await ensureWorkosEnvironmentProvisioned(
-        ctx,
-        deploymentName,
-        deployment,
-        {
-          offerToAssociateWorkOSTeam,
-          autoProvisionIfWorkOSTeamAssociated,
-          autoConfigureAuthkitConfig,
-        },
+      logMessage(
+        "Learn more at https://docs.convex.dev/auth/authkit/auto-provision",
       );
-      if (result === "ready") {
-        return await ctx.crash({
-          exitCode: 1,
-          errorType: "already handled",
-          printedMessage: null,
-        });
-      }
-      // If user chose not to create a WorkOS team, continue to show the error
-      // message below about missing WORKOS_CLIENT_ID with manual setup instructions
+      logMessage("");
     }
 
     const envVarMessage =

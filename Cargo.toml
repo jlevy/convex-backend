@@ -16,9 +16,6 @@ clusters = { path = "crates/clusters" }
 cmd_util = { path = "crates/cmd_util" }
 common = { path = "crates/common" }
 convex = { path = "crates/convex" }
-convex_fivetran_common = { path = "crates/fivetran_common" }
-convex_fivetran_destination = { path = "crates/fivetran_destination" }
-convex_fivetran_source = { path = "crates/fivetran_source" }
 convex_macro = { path = "crates/convex_macro" }
 convex_sync_types = { path = "crates/convex/sync_types" }
 database = { path = "crates/database" }
@@ -27,6 +24,9 @@ errors = { path = "crates/errors" }
 events = { path = "crates/events" }
 exports = { path = "crates/exports" }
 file_storage = { path = "crates/file_storage" }
+fivetran_common = { path = "crates/fivetran_common" }
+fivetran_destination = { path = "crates/fivetran_destination" }
+fivetran_source = { path = "crates/fivetran_source" }
 function_runner = { path = "crates/function_runner" }
 health_check = { path = "crates/health_check" }
 http_client = { path = "crates/http_client" }
@@ -150,7 +150,7 @@ jsonschema = "0.33"
 levenshtein_automata = "0.2.1"
 libc = "0.2"
 libsodium-sys-stable = { version = "1.22.2", features = [ "minimal" ] }
-lru = "0.14.0"
+lru = "0.16.0"
 maplit = "1"
 mime = "0.3"
 mime2ext = "0.1.52"
@@ -161,6 +161,7 @@ mysql_async = { git = "https://github.com/goffrie/mysql_async", rev = "90ff86d61
 native-tls = { version = "0.2", features = [ "alpn", "vendored" ] }
 num_cpus = "1.16.0"
 oauth2 = { version = "5", default-features = false, features = [ "reqwest" ] }
+once_cell = "1.19"
 openidconnect = { git = "https://github.com/get-convex/openidconnect-rs", rev = "15a9c551eafcf3b60d307feb94332352ac56c099", default-features = false, features = [ "accept-rfc3339-timestamps", "timing-resistant-secret-traits", "reqwest" ] }
 openssl = { version = "0.10.75", features = [ "aws-lc" ] }
 parking_lot = { version = "0.12", features = [ "hardware-lock-elision" ] }
@@ -215,8 +216,8 @@ spki = "0.7.3"
 strum = { version = "0.27", features = [ "derive" ] }
 sucds = { version = "0.8.1", features = [ "intrinsics" ] }
 syn = { version = "2.0", features = [ "full" ] }
-tantivy = { git = "https://github.com/get-convex/tantivy", rev = "c745b0977df94bc22fe4fc75db0200a8023f9a2c" }
-tantivy-common = { git = "https://github.com/get-convex/tantivy", rev = "c745b0977df94bc22fe4fc75db0200a8023f9a2c" }
+tantivy = { git = "https://github.com/get-convex/tantivy", rev = "2bb95afa29cc2ac94e303ea68ca4e16222d8e777" }
+tantivy-common = { git = "https://github.com/get-convex/tantivy", rev = "2bb95afa29cc2ac94e303ea68ca4e16222d8e777" }
 tempfile = "3"
 textplots = "0.8"
 thiserror = "2"

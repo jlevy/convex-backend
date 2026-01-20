@@ -14,6 +14,7 @@ use model::{
         types::{
             LogSinksRow,
             SinkConfig,
+            SinkState,
             SinkType,
         },
         LogSinksModel,
@@ -30,6 +31,7 @@ use crate::Application;
 pub struct LogSinkWithId {
     pub id: ResolvedDocumentId,
     pub config: SinkConfig,
+    pub status: SinkState,
 }
 
 pub async fn add_local_log_sink_on_startup<RT: Runtime>(
@@ -79,6 +81,27 @@ impl<RT: Runtime> Application<RT> {
         Ok(())
     }
 
+    pub async fn reset_log_sink_to_pending(&self, id: &String) -> anyhow::Result<()> {
+        let mut tx = self.begin(Identity::system()).await?;
+
+        let id = tx.resolve_developer_id(
+            &DeveloperDocumentId::decode(id).map_err(|_| {
+                anyhow::anyhow!(ErrorMetadata::bad_request(
+                    "InvalidLogStreamId",
+                    "The log stream id is invalid"
+                ))
+            })?,
+            TableNamespace::Global,
+        )?;
+
+        let mut model = LogSinksModel::new(&mut tx);
+        model
+            .patch_status(id, model::log_sinks::types::SinkState::Pending)
+            .await?;
+        self.commit(tx, "reset_log_sink_to_pending").await?;
+        Ok(())
+    }
+
     pub async fn get_log_sink(&self, sink_type: &SinkType) -> anyhow::Result<Option<SinkConfig>> {
         let mut tx = self.begin(Identity::system()).await?;
         let mut model = LogSinksModel::new(&mut tx);
@@ -109,13 +132,14 @@ impl<RT: Runtime> Application<RT> {
         let row: ParsedDocument<LogSinksRow> = doc.parse()?;
 
         // Check if the stream is tombstoned (deleted)
-        if row.status == model::log_sinks::types::SinkState::Tombstoned {
+        if row.status == SinkState::Tombstoned {
             return Ok(None);
         }
 
         Ok(Some(LogSinkWithId {
             id: row.id(),
             config: row.config.clone(),
+            status: row.status.clone(),
         }))
     }
 
@@ -128,8 +152,12 @@ impl<RT: Runtime> Application<RT> {
             .into_iter()
             .map(|sink| {
                 let id = sink.id();
-                let config = sink.into_value().config;
-                LogSinkWithId { id, config }
+                let value = sink.into_value();
+                LogSinkWithId {
+                    id,
+                    config: value.config,
+                    status: value.status,
+                }
             })
             .collect();
         Ok(sinks)

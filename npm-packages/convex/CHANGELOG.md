@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
-- Fixes #403 addEventListener not defined for react native.
+## 1.31.5
+
+- Exclude source code content from bundled sourcemaps by default.
+
+## 1.31.4
+
+- Fix [`window.addEventListener is not a function`](https://github.com/get-convex/convex-backend/issues/304) bug in React Native.
 
 ## 1.31.3
 

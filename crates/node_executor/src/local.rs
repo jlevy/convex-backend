@@ -256,6 +256,12 @@ impl NodeExecutor for LocalNodeExecutor {
                         response: EXECUTE_TIMEOUT_RESPONSE_JSON.clone(),
                         aws_request_id: None,
                     });
+                } else if e.is_connect() {
+                    // Connection error likely means the Node server crashed (e.g., OOM).
+                    // Drop the dead server so it will be restarted on next invoke.
+                    tracing::warn!("Node server connection failed, dropping server: {e}");
+                    self.inner.lock().await.take();
+                    return Err(anyhow::anyhow!(e).context("Node server request failed"));
                 } else {
                     return Err(anyhow::anyhow!(e).context("Node server request failed"));
                 }
@@ -314,6 +320,7 @@ mod tests {
     use cmd_util::env::config_test;
     use common::{
         assert_obj,
+        errors::INTERNAL_SERVER_ERROR_MSG,
         execution_context::ExecutionContext,
         fastrace_helpers::EncodedSpan,
         json::JsonForm as _,
@@ -363,6 +370,7 @@ mod tests {
         Storage,
     };
     use sync_types::{
+        types::SerializedArgs,
         CanonicalizedModulePath,
         ModulePath,
     };
@@ -485,7 +493,7 @@ mod tests {
         let args = create_args(assert_obj!("numbers" => ConvexValue::Array(numbers)))?;
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:addNumbers".parse()?,
-            args,
+            args.into_serialized_args()?,
             VERSION.clone(),
         );
         let (response, _log_lines) = execute(
@@ -507,7 +515,7 @@ mod tests {
         let source_package = upload_modules(storage.clone(), TEST_SOURCE.clone()).await?;
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:logHelloWorldAndReturn7".parse()?,
-            array![],
+            SerializedArgs::from_args(vec![])?,
             VERSION.clone(),
         );
         let (response, log_lines) = execute(
@@ -540,7 +548,7 @@ mod tests {
             ExecuteRequest {
                 path_and_args: ValidatedPathAndArgs::new_for_tests(
                     "node_actions.js:getUserIdentity".parse()?,
-                    array![],
+                    SerializedArgs::from_args(vec![])?,
                     VERSION.clone(),
                 ),
                 source_package,
@@ -583,7 +591,7 @@ mod tests {
             execute_request(
                 ValidatedPathAndArgs::new_for_tests(
                     "node_actions.js:runQuery".parse()?,
-                    args,
+                    args.into_serialized_args()?,
                     VERSION.clone(),
                 ),
                 source_package,
@@ -618,7 +626,7 @@ mod tests {
             execute_request(
                 ValidatedPathAndArgs::new_for_tests(
                     "node_actions.js:scheduleJob".parse()?,
-                    args,
+                    args.into_serialized_args()?,
                     VERSION.clone(),
                 ),
                 source_package,
@@ -653,7 +661,7 @@ mod tests {
         let source_maps_callback = async { Ok(source_maps) };
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:logAndThrowError".parse()?,
-            array![],
+            SerializedArgs::from_args(vec![])?,
             VERSION.clone(),
         );
         let (response, log_lines) = execute(
@@ -699,7 +707,7 @@ mod tests {
         let source_maps_callback = async { Ok(source_maps) };
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:logAndProcessExit".parse()?,
-            array![],
+            SerializedArgs::from_args(vec![])?,
             VERSION.clone(),
         );
         let (response, log_lines) = execute(
@@ -742,7 +750,7 @@ mod tests {
         ))?;
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:echoMessage".parse()?,
-            args,
+            args.into_serialized_args()?,
             VERSION.clone(),
         );
         let error = execute(
@@ -783,7 +791,7 @@ mod tests {
         let source_maps_callback = async { Ok(source_maps) };
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:forgotAwait".parse()?,
-            array![],
+            SerializedArgs::from_args(vec![])?,
             VERSION.clone(),
         );
         let (response, log_lines) = execute(
@@ -817,7 +825,7 @@ mod tests {
         let source_package = upload_modules(storage.clone(), TEST_SOURCE.clone()).await?;
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:hello".parse()?,
-            array![],
+            SerializedArgs::from_args(vec![])?,
             VERSION.clone(),
         );
         let (response, _log_lines) = execute(
@@ -848,7 +856,7 @@ mod tests {
             ExecuteRequest {
                 path_and_args: ValidatedPathAndArgs::new_for_tests(
                     "node_actions.js:getTestEnvVar".parse()?,
-                    array![],
+                    SerializedArgs::from_args(vec![])?,
                     VERSION.clone(),
                 ),
                 source_package,
@@ -875,7 +883,7 @@ mod tests {
         let source_package = upload_modules(storage.clone(), TEST_SOURCE.clone()).await?;
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:sleepAnHour".parse()?,
-            array![],
+            SerializedArgs::from_args(vec![])?,
             VERSION.clone(),
         );
         let (response, log_lines) = execute(
@@ -909,7 +917,7 @@ mod tests {
         let source_package = upload_modules(storage.clone(), TEST_SOURCE.clone()).await?;
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:partialEscapeSequence".parse()?,
-            array![],
+            SerializedArgs::from_args(vec![])?,
             VERSION.clone(),
         );
         let err = execute(
@@ -930,7 +938,7 @@ mod tests {
         let source_package = upload_modules(storage.clone(), TEST_SOURCE.clone()).await?;
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:workHardForAnHour".parse()?,
-            array![],
+            SerializedArgs::from_args(vec![])?,
             VERSION.clone(),
         );
         let (response, _log_lines) = execute(
@@ -956,7 +964,7 @@ mod tests {
         let source_package = upload_modules(storage.clone(), TEST_SOURCE.clone()).await?;
         let path_and_args = ValidatedPathAndArgs::new_for_tests(
             "node_actions.js:deadlock".parse()?,
-            array![],
+            SerializedArgs::from_args(vec![])?,
             VERSION.clone(),
         );
         let (response, _log_lines) = execute(
@@ -1215,6 +1223,91 @@ export const test = {
         Ok(())
     }
 
+    const MODULE_ANALYZE_CRASH: &str = r#"
+// Crash the Node executor process at analyze time in a controlled way.
+process.kill(process.pid, "SIGKILL");
+
+export const test = {
+    isAction: true,
+    isPublic: true,
+    invokeAction: (requestId, argsStr) => {
+        throw new Error("unimplemented");
+    },
+    exportArgs: () => `{ "type": "any" }`,
+};
+    "#;
+
+    #[convex_macro::prod_rt_test]
+    async fn test_analyze_recover_after_crash(rt: ProdRuntime) -> anyhow::Result<()> {
+        let storage = Arc::new(LocalDirStorage::new(rt.clone())?);
+        let actions = create_actions(rt).await;
+
+        // Crash Node during analyze by uploading a module that terminates the process.
+        {
+            let source_package = upload_modules(
+                storage.clone(),
+                vec![ModuleConfig {
+                    path: "actions/test.js".parse()?,
+                    source: MODULE_ANALYZE_CRASH.into(),
+                    source_map: None,
+                    environment: ModuleEnvironment::Node,
+                }],
+            )
+            .await?;
+            let source_maps = BTreeMap::new();
+            let result = actions
+                .analyze(
+                    AnalyzeRequest {
+                        source_package,
+                        environment_variables: BTreeMap::new(),
+                    },
+                    &source_maps,
+                )
+                .await;
+            match result {
+                // Node crashed hard enough that the request itself failed.
+                Err(e) => {
+                    // Ensure we're failing because the Node server crashed and the request failed,
+                    // not due to an unrelated timeout or structured JS failure.
+                    let top_context = e.chain().next().map(|c| c.to_string()).unwrap_or_default();
+                    assert_eq!(top_context, "Node server request failed");
+                },
+                // Node returned a structured error response (e.g. process died in a worker).
+                Ok(Err(e)) => {
+                    assert_eq!(e.message, INTERNAL_SERVER_ERROR_MSG);
+                },
+                Ok(Ok(_)) => anyhow::bail!("Expected analyze to fail after crashing Node"),
+            }
+        }
+
+        // After the OOM, we should be able to analyze correct modules
+        {
+            let source_package = upload_modules(
+                storage.clone(),
+                vec![ModuleConfig {
+                    path: "actions/test.js".parse()?,
+                    source: MODULE_ANALYZE.into(),
+                    source_map: None,
+                    environment: ModuleEnvironment::Node,
+                }],
+            )
+            .await?;
+            let source_maps = BTreeMap::new();
+            let modules = actions
+                .analyze(
+                    AnalyzeRequest {
+                        source_package,
+                        environment_variables: BTreeMap::new(),
+                    },
+                    &source_maps,
+                )
+                .await??;
+            assert_eq!(modules.len(), 1);
+        }
+
+        Ok(())
+    }
+
     #[convex_macro::prod_rt_test]
     async fn test_syscall_trace(rt: ProdRuntime) -> anyhow::Result<()> {
         let storage = Arc::new(LocalDirStorage::new(rt.clone())?);
@@ -1229,7 +1322,7 @@ export const test = {
             execute_request(
                 ValidatedPathAndArgs::new_for_tests(
                     "node_actions.js:runQuery".parse()?,
-                    args,
+                    args.into_serialized_args()?,
                     VERSION.clone(),
                 ),
                 source_package.clone(),
@@ -1252,7 +1345,7 @@ export const test = {
             execute_request(
                 ValidatedPathAndArgs::new_for_tests(
                     "node_actions.js:getUserIdentity".parse()?,
-                    array![],
+                    SerializedArgs::from_args(vec![])?,
                     VERSION.clone(),
                 ),
                 source_package,

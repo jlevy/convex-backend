@@ -428,12 +428,18 @@ impl<RT: Runtime> CronJobContext<RT> {
             component: component_path,
             udf_path: job.cron_spec.udf_path.clone(),
         };
+        // Hacks: Clean up old logs *before* running the mutation to avoid a
+        // system error if the user mutation leaves the transaction's read set
+        // at exactly the max size
+        CronModel::new(&mut tx, component)
+            .prepare_insert_cron_job_log(&job)
+            .await?;
         let mutation_result = self
             .runner
             .run_mutation_no_udf_log(
                 tx,
                 PublicFunctionPath::Component(path.clone()),
-                job.cron_spec.udf_args.clone(),
+                job.cron_spec.udf_args.into_serialized_args()?,
                 caller.allowed_visibility(),
                 context.clone(),
                 None,
@@ -446,7 +452,7 @@ impl<RT: Runtime> CronJobContext<RT> {
                     .log_mutation_system_error(
                         &e,
                         path,
-                        job.cron_spec.udf_args.clone(),
+                        job.cron_spec.udf_args.into_serialized_args()?,
                         identity,
                         start,
                         caller,
@@ -585,7 +591,7 @@ impl<RT: Runtime> CronJobContext<RT> {
                     .runner
                     .run_action_no_udf_log(
                         PublicFunctionPath::Component(path),
-                        job.cron_spec.udf_args,
+                        job.cron_spec.udf_args.into_serialized_args()?,
                         identity.clone(),
                         caller,
                         usage_tracker.clone(),
@@ -679,7 +685,7 @@ impl<RT: Runtime> CronJobContext<RT> {
                     .log_action_system_error(
                         &err,
                         path,
-                        job.cron_spec.udf_args.clone(),
+                        job.cron_spec.udf_args.into_serialized_args()?,
                         identity,
                         self.rt.monotonic_now(),
                         caller,
@@ -800,7 +806,7 @@ impl<RT: Runtime> CronJobContext<RT> {
                                 component: component_path,
                                 udf_path: job.cron_spec.udf_path.clone(),
                             },
-                            job.cron_spec.udf_args.clone(),
+                            job.cron_spec.udf_args.into_serialized_args()?,
                             identity,
                             self.rt.monotonic_now(),
                             FunctionCaller::Cron,
@@ -830,7 +836,7 @@ impl<RT: Runtime> CronJobContext<RT> {
                                 component: component_path,
                                 udf_path: job.cron_spec.udf_path.clone(),
                             },
-                            job.cron_spec.udf_args.clone(),
+                            job.cron_spec.udf_args.into_serialized_args()?,
                             identity,
                             self.rt.monotonic_now(),
                             FunctionCaller::Cron,

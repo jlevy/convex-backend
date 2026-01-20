@@ -71,13 +71,11 @@ use common::{
         Timestamp,
         UdfType,
     },
-    value::ConvexArray,
     RequestId,
 };
 use database::{
     unauthorized_error,
     Database,
-    Token,
     Transaction,
 };
 use errors::{
@@ -703,7 +701,7 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
         request_id: RequestId,
         mut tx: Transaction<RT>,
         path: CanonicalizedComponentFunctionPath,
-        arguments: ConvexArray,
+        arguments: SerializedArgs,
         caller: FunctionCaller,
     ) -> anyhow::Result<(Result<JsonPackedValue, JsError>, LogLines)> {
         if !(tx.identity().is_admin() || tx.identity().is_system()) {
@@ -774,7 +772,7 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
         &self,
         request_id: RequestId,
         path: PublicFunctionPath,
-        arguments: Vec<JsonValue>,
+        arguments: SerializedArgs,
         identity: Identity,
         mutation_identifier: Option<SessionRequestIdentifier>,
         caller: FunctionCaller,
@@ -805,7 +803,7 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
         &self,
         request_id: RequestId,
         path: PublicFunctionPath,
-        arguments: Vec<JsonValue>,
+        arguments: SerializedArgs,
         identity: Identity,
         mutation_identifier: Option<SessionRequestIdentifier>,
         caller: FunctionCaller,
@@ -814,15 +812,6 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
         if path.is_system() && !(identity.is_admin() || identity.is_system()) {
             anyhow::bail!(unauthorized_error("mutation"));
         }
-        let arguments = match parse_udf_args(path.udf_path(), arguments) {
-            Ok(arguments) => arguments,
-            Err(error) => {
-                return Ok(Err(MutationError {
-                    error,
-                    log_lines: vec![].into(),
-                }))
-            },
-        };
         let udf_path_string = (!path.is_system()).then_some(path.udf_path().to_string());
 
         let mut backoff = Backoff::new(
@@ -1039,7 +1028,7 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
         &self,
         tx: Transaction<RT>,
         path: PublicFunctionPath,
-        arguments: ConvexArray,
+        arguments: SerializedArgs,
         allowed_visibility: AllowedVisibility,
         context: ExecutionContext,
         mutation_queue_length: Option<usize>,
@@ -1079,7 +1068,7 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
         &self,
         mut tx: Transaction<RT>,
         path: PublicFunctionPath,
-        arguments: ConvexArray,
+        arguments: SerializedArgs,
         allowed_visibility: AllowedVisibility,
         context: ExecutionContext,
         mutation_queue_length: Option<usize>,
@@ -1146,22 +1135,13 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
         &self,
         request_id: RequestId,
         path: PublicFunctionPath,
-        arguments: Vec<JsonValue>,
+        arguments: SerializedArgs,
         identity: Identity,
         caller: FunctionCaller,
     ) -> anyhow::Result<Result<ActionReturn, ActionError>> {
         if path.is_system() && !(identity.is_admin() || identity.is_system()) {
             anyhow::bail!(unauthorized_error("action"));
         }
-        let arguments = match parse_udf_args(path.udf_path(), arguments) {
-            Ok(arguments) => arguments,
-            Err(error) => {
-                return Ok(Err(ActionError {
-                    error,
-                    log_lines: vec![].into(),
-                }))
-            },
-        };
         let context = ExecutionContext::new(request_id.clone(), &caller);
         let usage_tracking = FunctionUsageTracker::new();
         let start = self.runtime.monotonic_now();
@@ -1215,7 +1195,7 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
     pub async fn run_action_no_udf_log(
         &self,
         path: PublicFunctionPath,
-        arguments: ConvexArray,
+        arguments: SerializedArgs,
         identity: Identity,
         caller: FunctionCaller,
         usage_tracking: FunctionUsageTracker,
@@ -1248,7 +1228,7 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
     async fn run_action_inner(
         &self,
         path: PublicFunctionPath,
-        arguments: ConvexArray,
+        arguments: SerializedArgs,
         identity: Identity,
         caller: FunctionCaller,
         usage_tracking: FunctionUsageTracker,
@@ -1818,7 +1798,7 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
         &self,
         request_id: RequestId,
         path: PublicFunctionPath,
-        args: Vec<JsonValue>,
+        args: SerializedArgs,
         identity: Identity,
         ts: Timestamp,
         journal: Option<QueryJournal>,
@@ -1851,7 +1831,7 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
         &self,
         request_id: RequestId,
         path: PublicFunctionPath,
-        args: Vec<JsonValue>,
+        args: SerializedArgs,
         identity: Identity,
         ts: Timestamp,
         journal: Option<QueryJournal>,
@@ -1860,18 +1840,6 @@ impl<RT: Runtime> ApplicationFunctionRunner<RT> {
         if path.is_system() && !(identity.is_admin() || identity.is_system()) {
             anyhow::bail!(unauthorized_error("query"));
         }
-        let args = match parse_udf_args(path.udf_path(), args) {
-            Ok(arguments) => arguments,
-            Err(js_error) => {
-                return Ok(QueryReturn {
-                    result: Err(js_error),
-                    log_lines: vec![].into(),
-                    token: Token::empty(ts),
-                    journal: QueryJournal::new(),
-                });
-            },
-        };
-
         let start = self.runtime.monotonic_now();
         let context = ExecutionContext::new(request_id.clone(), &caller);
         let usage_tracker = FunctionUsageTracker::new();
@@ -1996,7 +1964,7 @@ impl<RT: Runtime> ActionCallbacks for ApplicationFunctionRunner<RT> {
             .run_query_at_ts(
                 context.request_id,
                 PublicFunctionPath::Component(path),
-                args.into_args()?,
+                args,
                 identity,
                 *ts,
                 None,
@@ -2022,7 +1990,7 @@ impl<RT: Runtime> ActionCallbacks for ApplicationFunctionRunner<RT> {
             .retry_mutation(
                 context.request_id,
                 PublicFunctionPath::Component(path),
-                args.into_args()?,
+                args,
                 identity,
                 None,
                 FunctionCaller::Action {
@@ -2052,7 +2020,7 @@ impl<RT: Runtime> ActionCallbacks for ApplicationFunctionRunner<RT> {
             .run_action(
                 context.request_id,
                 PublicFunctionPath::Component(path),
-                args.into_args()?,
+                args,
                 identity,
                 FunctionCaller::Action {
                     parent_scheduled_job: context.parent_scheduled_job,
@@ -2188,6 +2156,7 @@ impl<RT: Runtime> ActionCallbacks for ApplicationFunctionRunner<RT> {
                             tx,
                         )
                         .await?;
+                        let udf_args = parse_udf_args(&path.udf_path, udf_args.into_args()?)?;
                         let virtual_id =
                             VirtualSchedulerModel::new(tx, scheduling_component.into())
                                 .schedule(path, udf_args, scheduled_ts, context)

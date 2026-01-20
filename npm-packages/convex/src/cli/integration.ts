@@ -5,6 +5,7 @@ import { Command } from "@commander-js/extra-typings";
 import { Context, oneoffContext } from "../bundler/context.js";
 import { chalkStderr } from "chalk";
 import {
+  CloudDeploymentType,
   DeploymentSelectionOptions,
   deploymentSelectionWithinProjectFromOptions,
   fetchTeamAndProject,
@@ -26,8 +27,18 @@ import {
   getWorkosEnvironmentHealth,
   getWorkosTeamHealth,
   inviteToWorkosTeam,
+  listProjectWorkOSEnvironments,
+  createProjectWorkOSEnvironment,
+  deleteProjectWorkOSEnvironment,
 } from "./lib/workos/platformApi.js";
-import { logFinishedStep, logMessage } from "../bundler/log.js";
+import {
+  logFinishedStep,
+  logMessage,
+  logWarning,
+  showSpinner,
+  stopSpinner,
+} from "../bundler/log.js";
+import { readProjectConfig, getAuthKitConfig } from "./lib/config.js";
 import { promptOptions, promptYesNo } from "./lib/utils/prompts.js";
 
 async function selectEnvDeployment(
@@ -37,6 +48,7 @@ async function selectEnvDeployment(
   deployment: {
     deploymentUrl: string;
     deploymentName: string;
+    deploymentType: CloudDeploymentType;
     adminKey: string;
     deploymentNotice: string;
   };
@@ -54,14 +66,36 @@ async function selectEnvDeployment(
     deploymentSelection,
     selectionWithinProject,
   );
-  const deploymentNotice =
-    deploymentFields !== null
-      ? ` (on ${chalkStderr.bold(deploymentFields.deploymentType)} deployment ${chalkStderr.bold(deploymentFields.deploymentName)})`
-      : "";
+  // WorkOS integration only works with cloud deployments
+  if (!deploymentFields) {
+    return await ctx.crash({
+      exitCode: 1,
+      errorType: "fatal",
+      printedMessage: "WorkOS integration requires a configured deployment",
+    });
+  }
+
+  const deploymentNotice = ` (on ${chalkStderr.bold(deploymentFields.deploymentType)} deployment ${chalkStderr.bold(deploymentFields.deploymentName)})`;
+
+  const deploymentType = deploymentFields.deploymentType;
+  if (
+    deploymentType !== "dev" &&
+    deploymentType !== "preview" &&
+    deploymentType !== "prod"
+  ) {
+    return await ctx.crash({
+      exitCode: 1,
+      errorType: "fatal",
+      printedMessage: `WorkOS integration is only available for cloud deployments (dev, preview, prod), not ${deploymentType}`,
+    });
+  }
+
+  // Now TypeScript knows deploymentType is CloudDeploymentType
   return {
     ctx,
     deployment: {
-      deploymentName: deploymentFields!.deploymentName,
+      deploymentName: deploymentFields.deploymentName,
+      deploymentType,
       deploymentUrl,
       adminKey,
       deploymentNotice,
@@ -109,6 +143,63 @@ const workosTeamStatus = new Command("status")
       const workosUrl = `https://dashboard.workos.com/${envHealth.id}/authentication`;
       logMessage(`${workosUrl}`);
     }
+
+    try {
+      const { projectConfig } = await readProjectConfig(ctx);
+      const authKitConfig = await getAuthKitConfig(ctx, projectConfig);
+
+      if (!authKitConfig) {
+        logMessage(
+          `AuthKit config: ${chalkStderr.dim("Not configured in convex.json")}`,
+        );
+      } else {
+        logMessage(`AuthKit config:`);
+
+        // Show config for each deployment type
+        for (const deploymentType of ["dev", "preview", "prod"] as const) {
+          const envConfig = authKitConfig[deploymentType];
+          if (!envConfig) {
+            logMessage(
+              `  ${deploymentType}: ${chalkStderr.dim("not configured")}`,
+            );
+            continue;
+          }
+
+          // Build description based on what's configured
+          let description = "";
+
+          // Show environment type for prod deployments
+          if (deploymentType === "prod" && envConfig.environmentType) {
+            description = `environment type: ${envConfig.environmentType}`;
+          }
+
+          const configureStatus =
+            envConfig.configure === false
+              ? ", configure: disabled"
+              : envConfig.configure
+                ? ", will configure WorkOS"
+                : "";
+
+          const localEnvVarsStatus =
+            envConfig.localEnvVars === false
+              ? ""
+              : envConfig.localEnvVars
+                ? `, ${Object.keys(envConfig.localEnvVars).length} local env vars`
+                : "";
+
+          // Show deployment type with its configuration
+          const configInfo = [description, configureStatus, localEnvVarsStatus]
+            .filter((s) => s)
+            .join("");
+
+          logMessage(`  ${deploymentType}: ${configInfo || "configured"}`);
+        }
+      }
+    } catch (error) {
+      logMessage(
+        `AuthKit config: ${chalkStderr.yellow(`Error reading config: ${String(error)}`)}`,
+      );
+    }
   });
 
 const workosProvisionEnvironment = new Command("provision-environment")
@@ -133,19 +224,27 @@ const workosProvisionEnvironment = new Command("provision-environment")
       "integration workos provision-environment",
     );
 
-    const environmentName = options.name as string | undefined;
-
     try {
+      const { projectConfig } = await readProjectConfig(ctx);
+      const authKitConfig = await getAuthKitConfig(ctx, projectConfig);
+      const config = authKitConfig || { dev: {} };
+
+      if (!authKitConfig) {
+        logWarning(
+          "Consider using the 'authKit' config in convex.json for automatic provisioning.",
+        );
+        logMessage(
+          "Learn more at https://docs.convex.dev/auth/authkit/auto-provision",
+        );
+        logMessage("");
+      }
+
       await ensureWorkosEnvironmentProvisioned(
         ctx,
         deployment.deploymentName,
         deployment,
-        {
-          offerToAssociateWorkOSTeam: true,
-          autoProvisionIfWorkOSTeamAssociated: true,
-          autoConfigureAuthkitConfig: true,
-          ...(environmentName !== undefined && { environmentName }),
-        },
+        config,
+        deployment.deploymentType,
       );
     } catch (error) {
       await ctx.crash({
@@ -196,6 +295,7 @@ const workosProvisionTeam = new Command("provision-team")
       ctx,
       deployment.deploymentName,
       teamId,
+      deployment.deploymentType,
     );
 
     if (!result.success) {
@@ -389,6 +489,177 @@ const workosInvite = new Command("invite")
     }
   });
 
+// Project environment commands
+const workosProjectEnvList = new Command("list-project-environments")
+  .summary("List WorkOS environments for current project")
+  .description(
+    "List all WorkOS AuthKit environments created for the current project.\n" +
+      "These environments can be used across multiple deployments.",
+  )
+  .addDeploymentSelectionOptions(
+    actionDescription("List project environments for"),
+  )
+  .action(async (_options, cmd) => {
+    const options = cmd.optsWithGlobals();
+    const { ctx, deployment } = await selectEnvDeployment(options);
+
+    const info = await fetchTeamAndProject(ctx, deployment.deploymentName);
+
+    logMessage("Fetching project WorkOS environments...");
+
+    try {
+      const environments = await listProjectWorkOSEnvironments(
+        ctx,
+        info.projectId,
+      );
+
+      if (environments.length === 0) {
+        logMessage("No WorkOS environments found for this project.");
+        logMessage(
+          chalkStderr.gray(
+            "Create one with: npx convex integration workos create-project-environment --name <name>",
+          ),
+        );
+      } else {
+        logMessage(chalkStderr.bold("WorkOS Project Environments:"));
+        for (const env of environments) {
+          const prodLabel = env.isProduction
+            ? chalkStderr.yellow(" (production)")
+            : "";
+          logMessage(
+            `  ${chalkStderr.green(env.userEnvironmentName)}${prodLabel} - Client ID: ${env.workosClientId}`,
+          );
+        }
+      }
+    } catch (error) {
+      logMessage(
+        chalkStderr.red(`Failed to list environments: ${String(error)}`),
+      );
+    }
+  });
+
+const workosProjectEnvCreate = new Command("create-project-environment")
+  .summary("Create a new WorkOS environment for the project")
+  .description(
+    "Create a new WorkOS AuthKit environment for this project.\n" +
+      "The environment can be used across multiple deployments.",
+  )
+  .requiredOption("--name <name>", "Name for the new environment")
+  .option("--production", "Mark this environment as a production environment")
+  .addDeploymentSelectionOptions(
+    actionDescription("Create project environment for"),
+  )
+  .action(async (_options, cmd) => {
+    const options = cmd.optsWithGlobals();
+    const environmentName = options.name as string;
+    const isProduction = options.production as boolean | undefined;
+    const { ctx, deployment } = await selectEnvDeployment(options);
+
+    const info = await fetchTeamAndProject(ctx, deployment.deploymentName);
+
+    showSpinner(
+      `Creating project-level WorkOS environment '${environmentName}'...`,
+    );
+
+    try {
+      const response = await createProjectWorkOSEnvironment(
+        ctx,
+        info.projectId,
+        environmentName,
+        isProduction,
+      );
+
+      stopSpinner();
+      logFinishedStep(`Created WorkOS environment '${environmentName}'`);
+
+      logMessage("");
+      logMessage(chalkStderr.bold("Environment Details:"));
+      logMessage(`  Name: ${response.userEnvironmentName}`);
+      logMessage(`  Client ID: ${response.workosClientId}`);
+      logMessage(`  API Key: ${response.workosApiKey}`);
+    } catch (error: any) {
+      stopSpinner();
+      if (error?.message?.includes("NoWorkOSTeam")) {
+        logMessage(
+          chalkStderr.red(
+            "Your team doesn't have a WorkOS integration configured yet.",
+          ),
+        );
+        logMessage(
+          "Please run 'npx convex integration workos provision-team' first.",
+        );
+      } else if (error?.message?.includes("duplicate")) {
+        logMessage(
+          chalkStderr.red(
+            `An environment named '${environmentName}' already exists for this project.`,
+          ),
+        );
+      } else if (error?.message?.includes("TooManyEnvironments")) {
+        logMessage(
+          chalkStderr.red(
+            "You've reached the limit of 10 WorkOS environments per project. If you need more, please contact support.",
+          ),
+        );
+      } else {
+        logMessage(chalkStderr.red(`Failed to create environment: ${error}`));
+      }
+    }
+  });
+
+const workosProjectEnvDelete = new Command("delete-project-environment")
+  .summary("Delete a WorkOS environment from the project")
+  .description(
+    "Delete a WorkOS environment from this project.\n" +
+      "This will permanently remove the environment and its credentials.\n" +
+      "Use the client ID shown in list-project-environments output.",
+  )
+  .requiredOption(
+    "--client-id <clientId>",
+    "WorkOS client ID of the environment to delete (shown in list output)",
+  )
+  .addDeploymentSelectionOptions(
+    actionDescription("Delete project environment for"),
+  )
+  .action(async (_options, cmd) => {
+    const options = cmd.optsWithGlobals();
+    const clientId = options.clientId as string;
+    const { ctx, deployment } = await selectEnvDeployment(options);
+
+    const info = await fetchTeamAndProject(ctx, deployment.deploymentName);
+
+    // Confirm deletion
+    const confirmed = await promptYesNo(ctx, {
+      message: `Are you sure you want to delete environment with client ID '${clientId}'?`,
+      default: false,
+    });
+
+    if (!confirmed) {
+      logMessage("Deletion cancelled.");
+      return;
+    }
+
+    showSpinner(
+      `Deleting project WorkOS environment (this can take a while)...`,
+    );
+
+    try {
+      await deleteProjectWorkOSEnvironment(ctx, info.projectId, clientId);
+      stopSpinner();
+      logFinishedStep(`Deleted environment with client ID '${clientId}'`);
+    } catch (error: any) {
+      stopSpinner();
+      if (error?.message?.includes("not found")) {
+        logMessage(
+          chalkStderr.red(
+            `Environment with client ID '${clientId}' not found.`,
+          ),
+        );
+      } else {
+        logMessage(chalkStderr.red(`Failed to delete environment: ${error}`));
+      }
+    }
+  });
+
 const workos = new Command("workos")
   .summary("WorkOS integration commands")
   .description("Manage WorkOS team provisioning and environment setup")
@@ -396,7 +667,10 @@ const workos = new Command("workos")
   .addCommand(workosTeamStatus)
   .addCommand(workosProvisionTeam)
   .addCommand(workosDisconnectTeam)
-  .addCommand(workosInvite);
+  .addCommand(workosInvite)
+  .addCommand(workosProjectEnvList)
+  .addCommand(workosProjectEnvCreate)
+  .addCommand(workosProjectEnvDelete);
 
 export const integration = new Command("integration")
   .summary("Integration commands")

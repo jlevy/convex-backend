@@ -5,17 +5,17 @@
     "convex": "workspace:*",
     "shapes": "workspace:*",
     "id-encoding": "workspace:*",
-    "chai": "~4.5.0",
+    "chai": "~6.2.0",
     "chai-as-promised": "~8.0.0",
     "@types/chai-as-promised": "~8.0.0",
-    "prettier": "3.7.4",
+    "prettier": "^3.8.0",
     "udf-syscall-ffi": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.4",
     "typescript": "~5.0.3",
     "@types/node": "^18.17.0",
-    "@types/chai": "~5.2.0"
+    "@types/chai": "~5.2.3"
   },
   "scripts": {
     "build": "",

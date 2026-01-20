@@ -93,6 +93,7 @@ pub enum CallType {
     Import,
     CloudBackup,
     CloudRestore,
+    LogStreamPayload,
 }
 
 impl CallType {
@@ -107,6 +108,7 @@ impl CallType {
             Self::Import => "import",
             Self::CloudBackup => "cloud_backup",
             Self::CloudRestore => "cloud_restore",
+            Self::LogStreamPayload => "log_stream_payload",
         }
     }
 
@@ -198,7 +200,8 @@ impl CallType {
             | CallType::CloudBackup
             | CallType::CloudRestore
             | CallType::Export
-            | CallType::Import => None,
+            | CallType::Import
+            | CallType::LogStreamPayload => None,
         }
     }
 
@@ -342,7 +345,7 @@ impl UsageCounter {
         usage_metrics: &mut Vec<UsageEvent>,
     ) {
         // Merge the storage stats.
-        let (_, udf_id) = udf_path.into_component_and_udf_path();
+        let (global_component_path, udf_id) = udf_path.into_component_and_udf_path();
         for ((component_path, storage_api), function_count) in stats.storage_calls {
             usage_metrics.push(UsageEvent::FunctionStorageCalls {
                 id: execution_id.to_string(),
@@ -567,6 +570,17 @@ impl UsageCounter {
                 bytes_searched,
                 dimensions,
             })
+        }
+
+        for (url, egress) in stats.fetch_egress {
+            usage_metrics.push(UsageEvent::NetworkBandwidth {
+                id: execution_id.to_string(),
+                request_id: request_id.to_string(),
+                component_path: global_component_path.clone(),
+                udf_id: udf_id.clone(),
+                url,
+                egress,
+            });
         }
     }
 }
@@ -1275,9 +1289,9 @@ fn from_by_url_count(
     let counts: Vec<_> = counts
         .into_iter()
         .map(|c| -> anyhow::Result<_> {
-            let name = c.url.context("Missing `url` field")?;
+            let url = c.url.context("Missing `url` field")?;
             let count = c.count.context("Missing `count` field")?;
-            Ok((name, count))
+            Ok((url, count))
         })
         .try_collect()?;
     Ok(counts.into_iter())

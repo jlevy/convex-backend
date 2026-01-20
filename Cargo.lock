@@ -342,7 +342,6 @@ dependencies = [
  "chrono",
  "cmd_util",
  "common",
- "convex_fivetran_destination",
  "convex_macro",
  "convex_sync_types",
  "csv-async",
@@ -353,6 +352,7 @@ dependencies = [
  "exports",
  "fastrace",
  "file_storage",
+ "fivetran_destination",
  "float_next_after",
  "function_runner",
  "futures",
@@ -367,7 +367,7 @@ dependencies = [
  "keybroker",
  "libc",
  "log_streaming",
- "lru 0.14.0",
+ "lru 0.16.3",
  "maplit",
  "metrics",
  "mime2ext",
@@ -561,7 +561,7 @@ dependencies = [
  "errors",
  "fastrace",
  "futures",
- "lru 0.14.0",
+ "lru 0.16.3",
  "metrics",
  "parking_lot",
  "rand 0.9.0",
@@ -1433,7 +1433,7 @@ dependencies = [
  "bitflags 2.10.0",
  "cexpr",
  "clang-sys",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2031,7 +2031,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2040,7 +2040,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2259,90 +2259,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "uuid",
-]
-
-[[package]]
-name = "convex_fivetran_common"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "cfg-if",
- "fxhash",
- "maplit",
- "pb_build",
- "proptest",
- "prost",
- "prost-types",
- "tonic",
- "tonic-build",
- "url",
-]
-
-[[package]]
-name = "convex_fivetran_destination"
-version = "0.0.1"
-dependencies = [
- "aes",
- "anyhow",
- "async-compression 0.4.11",
- "async-trait",
- "base64 0.13.1",
- "cbc",
- "chrono",
- "clap",
- "cmd_util",
- "common",
- "convex_fivetran_common",
- "csv-async",
- "derive_more",
- "futures",
- "futures-async-stream",
- "maplit",
- "must-let",
- "pretty_assertions",
- "proptest",
- "proptest-derive",
- "prost",
- "prost-types",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "tokio",
- "tonic",
-]
-
-[[package]]
-name = "convex_fivetran_source"
-version = "2.0.1"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytes",
- "cfg-if",
- "clap",
- "cmd_util",
- "convex",
- "convex_fivetran_common",
- "derive_more",
- "futures",
- "futures-async-stream",
- "futures-util",
- "headers",
- "maplit",
- "pretty_assertions",
- "proptest",
- "proptest-derive",
- "prost",
- "prost-types",
- "rand 0.9.0",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tonic",
- "tonic-build",
  "uuid",
 ]
 
@@ -2851,7 +2767,6 @@ dependencies = [
  "cmd_util",
  "common",
  "compact_str",
- "convex_fivetran_source",
  "convex_macro",
  "convex_sync_types",
  "criterion",
@@ -2859,6 +2774,7 @@ dependencies = [
  "errors",
  "events",
  "fastrace",
+ "fivetran_source",
  "futures",
  "futures-async-stream",
  "governor",
@@ -3522,7 +3438,7 @@ checksum = "25c7df09945d65ea8d70b3321547ed414bbc540aad5bac6883d021b970f35b04"
 [[package]]
 name = "fastfield_codecs"
 version = "0.3.0"
-source = "git+https://github.com/get-convex/tantivy?rev=c745b0977df94bc22fe4fc75db0200a8023f9a2c#c745b0977df94bc22fe4fc75db0200a8023f9a2c"
+source = "git+https://github.com/get-convex/tantivy?rev=2bb95afa29cc2ac94e303ea68ca4e16222d8e777#2bb95afa29cc2ac94e303ea68ca4e16222d8e777"
 dependencies = [
  "fastdivide",
  "itertools 0.10.5",
@@ -3625,6 +3541,90 @@ dependencies = [
  "lazy_static",
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "fivetran_common"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cfg-if",
+ "fxhash",
+ "maplit",
+ "pb_build",
+ "proptest",
+ "prost",
+ "prost-types",
+ "tonic",
+ "tonic-build",
+ "url",
+]
+
+[[package]]
+name = "fivetran_destination"
+version = "0.0.1"
+dependencies = [
+ "aes",
+ "anyhow",
+ "async-compression 0.4.11",
+ "async-trait",
+ "base64 0.13.1",
+ "cbc",
+ "chrono",
+ "clap",
+ "cmd_util",
+ "common",
+ "csv-async",
+ "derive_more",
+ "fivetran_common",
+ "futures",
+ "futures-async-stream",
+ "maplit",
+ "must-let",
+ "pretty_assertions",
+ "proptest",
+ "proptest-derive",
+ "prost",
+ "prost-types",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tonic",
+]
+
+[[package]]
+name = "fivetran_source"
+version = "2.0.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "cfg-if",
+ "clap",
+ "cmd_util",
+ "convex",
+ "derive_more",
+ "fivetran_common",
+ "futures",
+ "futures-async-stream",
+ "futures-util",
+ "headers",
+ "maplit",
+ "pretty_assertions",
+ "proptest",
+ "proptest-derive",
+ "prost",
+ "prost-types",
+ "rand 0.9.0",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "tonic-build",
+ "uuid",
 ]
 
 [[package]]
@@ -4202,6 +4202,8 @@ version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
 dependencies = [
+ "allocator-api2",
+ "equivalent",
  "foldhash 0.2.0",
 ]
 
@@ -5500,8 +5502,6 @@ dependencies = [
  "clusters",
  "cmd_util",
  "common",
- "convex_fivetran_destination",
- "convex_fivetran_source",
  "convex_macro",
  "convex_sync_types",
  "database",
@@ -5512,6 +5512,8 @@ dependencies = [
  "exports",
  "fastrace",
  "file_storage",
+ "fivetran_destination",
+ "fivetran_source",
  "function_runner",
  "futures",
  "futures-async-stream",
@@ -5612,6 +5614,7 @@ dependencies = [
  "convex_macro",
  "database",
  "errors",
+ "events",
  "futures",
  "hex",
  "http 1.3.1",
@@ -5628,6 +5631,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "usage_tracking",
 ]
 
 [[package]]
@@ -5702,6 +5706,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f8cc7106155f10bdf99a6f379688f543ad6596a415375b36a59a054ceda1198"
 dependencies = [
  "hashbrown 0.15.2",
+]
+
+[[package]]
+name = "lru"
+version = "0.16.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1dc47f592c06f33f8e3aea9591776ec7c9f9e4124778ff8a3c3b87159f7e593"
+dependencies = [
+ "hashbrown 0.16.1",
 ]
 
 [[package]]
@@ -5991,13 +6004,13 @@ dependencies = [
  "chrono",
  "cmd_util",
  "common",
- "convex_fivetran_destination",
  "convex_macro",
  "convex_sync_types",
  "database",
  "derive_more",
  "errors",
  "fastrace",
+ "fivetran_destination",
  "futures",
  "futures-async-stream",
  "humansize",
@@ -6500,7 +6513,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "getrandom 0.2.15",
  "http 1.3.1",
@@ -6708,7 +6721,7 @@ dependencies = [
 [[package]]
 name = "ownedbytes"
 version = "0.5.0"
-source = "git+https://github.com/get-convex/tantivy?rev=c745b0977df94bc22fe4fc75db0200a8023f9a2c#c745b0977df94bc22fe4fc75db0200a8023f9a2c"
+source = "git+https://github.com/get-convex/tantivy?rev=2bb95afa29cc2ac94e303ea68ca4e16222d8e777#2bb95afa29cc2ac94e303ea68ca4e16222d8e777"
 dependencies = [
  "stable_deref_trait",
 ]
@@ -7083,7 +7096,7 @@ dependencies = [
  "futures-async-stream",
  "hex",
  "itertools 0.14.0",
- "lru 0.14.0",
+ "lru 0.16.3",
  "metrics",
  "parking_lot",
  "postgres-protocol",
@@ -7381,7 +7394,7 @@ checksum = "5bb182580f71dd070f88d01ce3de9f4da5021db7115d2e1c3605a754153b77c1"
 dependencies = [
  "bytes",
  "heck",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -7401,7 +7414,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "18bec9b0adc4eba778b33684b7ba3e7137789434769ee3ce3930463ef904cfca"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.108",
@@ -8289,6 +8302,8 @@ dependencies = [
  "levenshtein_automata",
  "maplit",
  "metrics",
+ "once_cell",
+ "parking_lot",
  "pb",
  "prometheus",
  "proptest",
@@ -9363,7 +9378,7 @@ checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
 [[package]]
 name = "tantivy"
 version = "0.19.0"
-source = "git+https://github.com/get-convex/tantivy?rev=c745b0977df94bc22fe4fc75db0200a8023f9a2c#c745b0977df94bc22fe4fc75db0200a8023f9a2c"
+source = "git+https://github.com/get-convex/tantivy?rev=2bb95afa29cc2ac94e303ea68ca4e16222d8e777#2bb95afa29cc2ac94e303ea68ca4e16222d8e777"
 dependencies = [
  "aho-corasick 0.7.20",
  "arc-swap",
@@ -9415,12 +9430,12 @@ dependencies = [
 [[package]]
 name = "tantivy-bitpacker"
 version = "0.3.0"
-source = "git+https://github.com/get-convex/tantivy?rev=c745b0977df94bc22fe4fc75db0200a8023f9a2c#c745b0977df94bc22fe4fc75db0200a8023f9a2c"
+source = "git+https://github.com/get-convex/tantivy?rev=2bb95afa29cc2ac94e303ea68ca4e16222d8e777#2bb95afa29cc2ac94e303ea68ca4e16222d8e777"
 
 [[package]]
 name = "tantivy-columnar"
 version = "0.1.0"
-source = "git+https://github.com/get-convex/tantivy?rev=c745b0977df94bc22fe4fc75db0200a8023f9a2c#c745b0977df94bc22fe4fc75db0200a8023f9a2c"
+source = "git+https://github.com/get-convex/tantivy?rev=2bb95afa29cc2ac94e303ea68ca4e16222d8e777#2bb95afa29cc2ac94e303ea68ca4e16222d8e777"
 dependencies = [
  "fastdivide",
  "fnv",
@@ -9435,7 +9450,7 @@ dependencies = [
 [[package]]
 name = "tantivy-common"
 version = "0.5.0"
-source = "git+https://github.com/get-convex/tantivy?rev=c745b0977df94bc22fe4fc75db0200a8023f9a2c#c745b0977df94bc22fe4fc75db0200a8023f9a2c"
+source = "git+https://github.com/get-convex/tantivy?rev=2bb95afa29cc2ac94e303ea68ca4e16222d8e777#2bb95afa29cc2ac94e303ea68ca4e16222d8e777"
 dependencies = [
  "async-trait",
  "byteorder",
@@ -9456,7 +9471,7 @@ dependencies = [
 [[package]]
 name = "tantivy-query-grammar"
 version = "0.19.0"
-source = "git+https://github.com/get-convex/tantivy?rev=c745b0977df94bc22fe4fc75db0200a8023f9a2c#c745b0977df94bc22fe4fc75db0200a8023f9a2c"
+source = "git+https://github.com/get-convex/tantivy?rev=2bb95afa29cc2ac94e303ea68ca4e16222d8e777#2bb95afa29cc2ac94e303ea68ca4e16222d8e777"
 dependencies = [
  "combine",
  "once_cell",
@@ -9466,7 +9481,7 @@ dependencies = [
 [[package]]
 name = "tantivy-sstable"
 version = "0.1.0"
-source = "git+https://github.com/get-convex/tantivy?rev=c745b0977df94bc22fe4fc75db0200a8023f9a2c#c745b0977df94bc22fe4fc75db0200a8023f9a2c"
+source = "git+https://github.com/get-convex/tantivy?rev=2bb95afa29cc2ac94e303ea68ca4e16222d8e777#2bb95afa29cc2ac94e303ea68ca4e16222d8e777"
 dependencies = [
  "ciborium",
  "serde",
@@ -9477,7 +9492,7 @@ dependencies = [
 [[package]]
 name = "tantivy-stacker"
 version = "0.1.0"
-source = "git+https://github.com/get-convex/tantivy?rev=c745b0977df94bc22fe4fc75db0200a8023f9a2c#c745b0977df94bc22fe4fc75db0200a8023f9a2c"
+source = "git+https://github.com/get-convex/tantivy?rev=2bb95afa29cc2ac94e303ea68ca4e16222d8e777#2bb95afa29cc2ac94e303ea68ca4e16222d8e777"
 dependencies = [
  "byteorder",
  "murmurhash32",
@@ -9487,7 +9502,7 @@ dependencies = [
 [[package]]
 name = "tantivy-tokenizer-api"
 version = "0.1.0"
-source = "git+https://github.com/get-convex/tantivy?rev=c745b0977df94bc22fe4fc75db0200a8023f9a2c#c745b0977df94bc22fe4fc75db0200a8023f9a2c"
+source = "git+https://github.com/get-convex/tantivy?rev=2bb95afa29cc2ac94e303ea68ca4e16222d8e777#2bb95afa29cc2ac94e303ea68ca4e16222d8e777"
 dependencies = [
  "serde",
 ]
@@ -10279,7 +10294,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69fff37da548239c3bf9e64a12193d261e8b22b660991c6fd2df057c168f435f"
 dependencies = [
  "cc",
- "windows-targets 0.48.0",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]

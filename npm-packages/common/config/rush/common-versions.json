@@ -92,11 +92,6 @@
      * specifically https://github.com/TanStack/router/blob/main/examples/react/start-basic-react-query/package.json
      */
     "@vitejs/plugin-react": ["^4.3.1"],
-    // Allow old Tailwind versions in demos
-    "tailwindcss": ["^3.2.4", "^3.4.16"],
-    "tailwind-merge": ["^2.5.5", "^1.14.0"],
-    "autoprefixer": ["^10.4.20"],
-    "postcss": ["^8.4.49"],
     /**
      * These are for private-demos/nextjs-15-app to closely match
      * npx create-next-app@latest next-15-app
@@ -106,8 +101,8 @@
     "react-dom": ["^19.2.3", "^18.3.1"],
     //"typescript": ["^5"],
     "@types/node": ["^20", "^22.5.4"],
-    "@types/react": ["^18", "^18.3.17", "^18.2.65"],
-    "@types/react-dom": ["^18", "^18.3.1", "^18.2.21"],
+    "@types/react": ["^18", "^18.3.17", "^18.2.65", "^19.2.3"],
+    "@types/react-dom": ["^18", "^18.3.1", "^18.2.21", "^19.2.3"],
     "typescript-eslint": ["^8.45.0"],
     "@typescript-eslint/eslint-plugin": ["^6.7.4"], // TODO(nicolas) Update the dashboard ESLint config
     "@typescript-eslint/parser": ["^6.7.4"], // TODO(nicolas) Update the dashboard ESLint config
