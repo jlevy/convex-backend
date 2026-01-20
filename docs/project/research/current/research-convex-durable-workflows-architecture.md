@@ -49,6 +49,40 @@ this can result in 4-5x slower total execution time compared to inline action ca
 - Workpool source: `attic/workpool/workpool/` (cloned from GitHub)
 - Official Convex documentation
 
+### ⚠️ Source Code Cross-Reference (Required for Maintenance)
+
+**IMPORTANT**: Before updating this documentation or investigating workflow issues,
+clone the component source code into the `attic/` directory for cross-reference:
+
+```bash
+# From repository root
+mkdir -p attic/workflow attic/workpool
+
+# Clone workflow component
+git clone https://github.com/get-convex/workflow.git attic/workflow/workflow
+
+# Clone workpool component
+git clone https://github.com/get-convex/workpool.git attic/workpool/workpool
+```
+
+**Key Files to Cross-Reference**:
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| Workflow | `src/client/workflowMutation.ts` | Handler execution, journal replay |
+| Workflow | `src/client/step.ts` | Step executor, journal size tracking |
+| Workflow | `src/component/journal.ts` | Journal load/save, `MAX_JOURNAL_SIZE` |
+| Workflow | `src/component/pool.ts` | Workpool integration, `DEFAULT_MAX_PARALLELISM=25` |
+| Workpool | `src/component/loop.ts` | Main loop, recovery, segment scheduling |
+| Workpool | `src/component/shared.ts` | Constants: `SEGMENT_MS=100`, `DEFAULT_MAX_PARALLELISM=10` |
+| Workpool | `src/component/kick.ts` | Loop wake-up mechanism |
+
+**Verification Checklist** when updating this doc:
+- [ ] Pulled latest source from GitHub repos
+- [ ] Verified line numbers in source references
+- [ ] Checked for new constants or behavior changes
+- [ ] Tested claims with [workflow-testing harness](../../../experiments/workflow-testing/)
+
 * * *
 
 ## Architecture Overview

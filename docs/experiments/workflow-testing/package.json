@@ -1,0 +1,33 @@
+{
+  "name": "@convex-experiments/workflow-testing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End-to-end testing harness for Convex workflow and workpool components",
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:scheduler": "vitest run --testNamePattern 'scheduler'",
+    "test:payload": "vitest run --testNamePattern 'payload'",
+    "test:journal": "vitest run --testNamePattern 'journal'",
+    "setup": "./scripts/setup.sh",
+    "teardown": "./scripts/teardown.sh",
+    "report": "tsx scripts/generate-report.ts"
+  },
+  "dependencies": {
+    "@convex-dev/workflow": "^0.1.0",
+    "@convex-dev/workpool": "^0.1.0",
+    "convex": "^1.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
