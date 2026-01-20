@@ -3,6 +3,8 @@ node_modules/
 
 # Convex generated files
 convex/_generated/
+convex/README.md
+convex/tsconfig.json
 
 # Environment
 .env
