@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Convex generated files
+convex/_generated/
+
+# Environment
+.env
+.env.local
+
+# Build outputs
+*.log
+.convex-pid
+
+# Test results (generated)
+RESULTS.md
