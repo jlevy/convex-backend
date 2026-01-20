@@ -1,9 +1,9 @@
 # Research Brief: Convex Database Limits, Best Practices, and Workarounds
 
-**Last Updated**: 2026-01-09
+**Last Updated**: 2026-01-20
 
-**Status**: Complete (reviewed January 2026; updated 2026-01-09 with source code verification
-and cross-references)
+**Status**: Complete (reviewed January 2026; updated 2026-01-20 with source code verification,
+cross-references, and pricing verification)
 
 **Legend**:
 
@@ -24,6 +24,8 @@ and cross-references)
 
 - [research-convex-backend-limits-implementation.md](../../../project/research/current/research-convex-backend-limits-implementation.md) —
   Deep dive into source code implementation of limits and configurability for self-hosted deployments
+- [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md) —
+  Workflow and workpool architecture, overhead analysis, and best practices for durable workflows
 
 * * *
 
@@ -1364,10 +1366,8 @@ requirements apply beyond OCC conflict handling:
   avoid re-processing on retry
 
 **See Also**:
-- [research-durable-workflows-agent-conversations.md](../../../project/research/current/research-durable-workflows-agent-conversations.md)
-  § "Idempotency Requirements for Workflow Steps" for idempotency patterns
-- [plan-2026-01-09-durable-workflows-agent-conversations-v3.md](../../../project/specs/active/plan-2026-01-09-durable-workflows-agent-conversations-v3.md)
-  § "Idempotency Contract" for implementation-ready details
+- [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md)
+  § "Best Practices for Efficient Workflows" for idempotency patterns and overhead analysis
 
 **🛠️ OCC Configuration (Self-Hosted)**:
 
@@ -1882,10 +1882,8 @@ pattern. But if those Node.js actions then call other Node.js actions, you recre
 the problematic nested same-runtime pattern.
 
 **See Also**:
-- [research-durable-workflows-agent-conversations.md](../../../project/research/current/research-durable-workflows-agent-conversations.md)
-  § "Nested Action Timeout Issue" for detailed analysis
-- [plan-2026-01-09-durable-workflows-agent-conversations-v3.md](../../../project/specs/active/plan-2026-01-09-durable-workflows-agent-conversations-v3.md)
-  § "Leaf Action Requirement" for implementation guidance
+- [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md)
+  § "Overhead Analysis" and "Best Practices for Efficient Workflows" for workflow architecture details
 
 **Best Practices**:
 

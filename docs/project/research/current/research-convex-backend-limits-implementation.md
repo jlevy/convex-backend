@@ -1,6 +1,6 @@
 # Research Brief: Convex Backend Limits Implementation and Configurability
 
-**Last Updated**: 2026-01-09
+**Last Updated**: 2026-01-20
 
 **Status**: Complete
 
@@ -8,6 +8,8 @@
 
 - [research-convex-db-limits-best-practices.md](../../../general/research/current/research-convex-db-limits-best-practices.md) -
   User-facing limits documentation and workarounds
+- [research-convex-durable-workflows-architecture.md](./research-convex-durable-workflows-architecture.md) -
+  Workflow and workpool architecture, overhead analysis
 
 * * *
 

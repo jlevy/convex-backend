@@ -2,12 +2,14 @@
 
 **Last Updated**: 2026-01-20
 
-**Status**: In Progress
+**Status**: Complete
 
 **Related**:
 
-- [research-convex-db-limits-best-practices.md](../../general/research/current/research-convex-db-limits-best-practices.md) —
+- [research-convex-db-limits-best-practices.md](../../../general/research/current/research-convex-db-limits-best-practices.md) —
   Database limits and best practices
+- [research-convex-backend-limits-implementation.md](./research-convex-backend-limits-implementation.md) —
+  Source code implementation of limits and configurability
 - [@convex-dev/workflow](https://github.com/get-convex/workflow) — Workflow component source
 - [@convex-dev/workpool](https://github.com/get-convex/workpool) — Workpool component source
 
@@ -265,9 +267,10 @@ await step.runAction(internal.myAction, args, {
 2. **Journal Limit Enforcement**: 8 MiB imposed on journal to stay within mutation bounds
 
 3. **Mutation Limits Apply**: Workflow handler is a mutation
-   - 8 MiB read/16K documents scanned
-   - 8 MiB write/8K documents written
+   - 8 MiB read / 16K documents scanned (documented; source code allows 16 MiB / 32K)
+   - 8 MiB write / 8K documents written (documented; source code allows 16 MiB / 16K)
    - 1 second JS execution time
+   - See [limits implementation doc](./research-convex-backend-limits-implementation.md) for details
 
 4. **No Field Projection**: Convex reads entire documents, so journal replay reads all step data
 
