@@ -1,8 +1,3 @@
-IMPORTANT: You MUST read ./docs/development.md and ./docs/docs-overview.md for project documentation.
-(This project uses Speculate project structure.)
-
-
-<!-- BEGIN TBD INTEGRATION -->
 # tbd Workflow
 
 ## Installation
@@ -140,4 +135,3 @@ tbd dep add <tests-id> <feature-id>   # Tests depend on feature
 - **Issue types**: task, bug, feature, epic
 - **Status values**: open, in_progress, closed
 - **JSON output**: Add `--json` to any command for machine-readable output
-<!-- END TBD INTEGRATION -->

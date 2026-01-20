@@ -1,8 +1,8 @@
-IMPORTANT: You MUST read ./docs/development.md and ./docs/docs-overview.md for project documentation.
-(This project uses Speculate project structure.)
-
-
-<!-- BEGIN TBD INTEGRATION -->
+---
+name: tbd
+description: Lightweight, git-native issue tracking (aka beads) for AI agents. Use for creating, planning, updating, and tracking issues with dependencies. Invoke when user mentions tbd, beads, to-do lists, planning, tracking tasks, issues, or bugs.
+allowed-tools: Bash(tbd:*), Read, Write
+---
 # tbd Workflow
 
 ## Installation
@@ -140,4 +140,3 @@ tbd dep add <tests-id> <feature-id>   # Tests depend on feature
 - **Issue types**: task, bug, feature, epic
 - **Status values**: open, in_progress, closed
 - **JSON output**: Add `--json` to any command for machine-readable output
-<!-- END TBD INTEGRATION -->
