@@ -180,30 +180,100 @@ Step Execution Flow:
 TOTAL OVERHEAD PER STEP: ~100-300ms (not counting actual step execution)
 ```
 
+### ⚠️ Important: Per-Step Overhead vs Inter-Iteration Gap
+
+**Per-step overhead** (~100-300ms): The database operation time shown above. This is the
+minimum overhead for each `step.run*()` call through the workpool.
+
+**Inter-iteration gap** (~1.2-1.5s typical, up to 6s): The time between the END of one
+workflow handler invocation and the START of the next. This is larger because it includes:
+
+1. **onComplete processing**: Update journal, re-enqueue workflow (~50-100ms)
+2. **Scheduler wake-up**: DB subscription triggers scheduler (~50-200ms)
+3. **Workpool segment granularity**: 100ms time slices mean minimum ~100ms scheduling delay
+4. **Journal load query**: Fetches ALL steps for workflow (grows O(N) with step count)
+5. **Replay overhead**: Handler replays all cached steps from beginning
+
+**Journal Load Scaling Issue**: Each workflow handler invocation runs this query:
+```typescript
+for await (const entry of ctx.db
+  .query("steps")
+  .withIndex("workflow", (q) => q.eq("workflowId", workflowId))) {
+  journalEntries.push(entry);
+}
+```
+
+For a workflow with 50 steps, this fetches all 50 entries on every re-invocation.
+This O(N) cost accumulates over long-running workflows.
+
+**Scheduler Fallback**: When the DB subscription wake-up is missed (e.g., after complex
+tool executions), the Convex scheduler falls back to a 5-second polling interval. This
+explains occasional ~6 second gaps observed in production.
+
 ### Overhead Comparison
 
-| Execution Pattern | Overhead per "step" | Use Case |
-| --- | --- | --- |
-| **Direct action call** | ~0ms | Simple one-shot operations |
-| **ctx.scheduler.runAfter** | ~20-50ms | Fire-and-forget async |
-| **Workpool enqueue** | ~100-200ms | Rate-limited async with retry |
-| **Workflow step** | ~100-300ms | Durable, resumable operations |
+| Execution Pattern | Per-Step Overhead | Inter-Iteration Gap | Use Case |
+| --- | --- | --- | --- |
+| **Direct action call** | ~0ms | N/A | Simple one-shot operations |
+| **ctx.scheduler.runAfter** | ~20-50ms | N/A | Fire-and-forget async |
+| **Workpool enqueue** | ~100-200ms | N/A | Rate-limited async with retry |
+| **Workflow step** | ~100-300ms | ~1.2-1.5s (up to 6s) | Durable, resumable operations |
+
+**Note**: Inter-iteration gap is measured from the END of one handler invocation to the
+START of the next. It includes scheduler wake-up, journal load, and replay overhead.
 
 ### Why 4-5x Slower for Short Steps
 
 For a step that takes 1 second to execute:
 
 - **Direct call**: 1s
-- **Workflow step**: 1s + ~200ms overhead + journal replay = ~1.3-1.5s
+- **Workflow step**: 1s + ~200ms DB overhead + ~1.2s inter-iteration gap = ~2.4s
 
-For a workflow with 5 steps, each taking 200ms:
+For a workflow with 5 iterations, each with an LLM call (5s) + tool call (1s):
 
-- **Direct inline**: 5 × 200ms = 1s
-- **Workflow**: 5 × (200ms + 200ms overhead) = 2s + journal replays = ~3-4s
+- **Direct inline**: 5 × (5s + 1s) = 30s
+- **Workflow**: 5 × (6s + 1.2s inter-iteration gap + 0.2s step overhead) = ~37s + journal replays
 
-**The overhead is relatively fixed per step**, so:
+**Real-world measurement** (from arena project, 9-iteration workflow):
+- Total workflow time: 203 seconds
+- Raw LLM API time: 43 seconds (21%)
+- Infrastructure overhead: 160 seconds (79%)
+
+**The overhead has multiple components**:
+- **Per-step DB operations**: Relatively fixed ~100-300ms
+- **Inter-iteration gap**: ~1.2-1.5s typical, increases with scheduler fallback
+- **Journal replay**: Grows O(N) with iteration count
+- **Accumulated**: For N iterations, total overhead ≈ N × (inter-iteration gap + step overhead)
+
+**Performance guidance**:
 - For short steps (< 1s): overhead dominates → 2-5x slower
-- For long steps (> 10s): overhead negligible → ~1.1x slower
+- For long steps (> 10s): overhead less significant → ~1.5-2x slower
+- For many iterations (> 20): journal replay becomes noticeable
+
+### Sources of Unmeasured/Unaccounted Overhead
+
+In typical workflow timing measurements, some `step.run*()` calls are not instrumented:
+
+| Step Call | Purpose | Typical Location | Overhead |
+| --- | --- | --- | --- |
+| `step.runQuery(getStatus)` | Cancellation check | Before LLM call | ~100-300ms |
+| `step.runMutation(persist*)` | Save state | After tool execution | Measured |
+| `step.runQuery(getResult)` | Idempotency check | Before tool execution | ~100-300ms |
+| `step.runQuery(getResult)` | Timing/result fetch | After tool execution | **Variable** |
+
+**Large payload effect**: The timing/result query returns the full tool result. For tools
+returning large payloads (e.g., web search results, API responses), this query takes longer
+because the entire result must be serialized through the workpool round-trip.
+
+**Observed pattern** (from arena project):
+- Small payloads (stock prices): ~2-3s unaccounted time per iteration
+- Large payloads (web search, earnings data): ~6-8s unaccounted time per iteration
+
+**Root cause**: Each `step.run*()` call incurs workpool overhead even for simple queries.
+The overhead varies with payload size due to serialization and DB write costs.
+
+**Mitigation**: Design step return values to be small (IDs, status flags). Store large
+results directly in the database and return only references.
 
 * * *
 
@@ -261,10 +331,15 @@ await step.runAction(internal.myAction, args, {
 
 ### Hard Limitations
 
-1. **Journal Size Limit**: 1 MiB total for step arguments + return values within a single workflow
+1. **Journal Size Limit (Recommended)**: 1 MiB total for step arguments + return values
+   - From README: "Steps can only take in and return a total of 1 MiB of data"
+   - This is a recommended limit, not a hard cutoff at exactly 1 MiB
    - Workaround: Store large data in DB, pass IDs
 
-2. **Journal Limit Enforcement**: 8 MiB imposed on journal to stay within mutation bounds
+2. **Journal Size Limit (Hard)**: 8 MiB (`MAX_JOURNAL_SIZE` in shared.ts)
+   - This is the hard limit enforced in `journal.load()` and `step.ts`
+   - Exceeding this causes workflow to fail with "journal size limit exceeded"
+   - The 8 MiB limit exists to stay within mutation read bounds
 
 3. **Mutation Limits Apply**: Workflow handler is a mutation
    - 8 MiB read / 16K documents scanned (documented; source code allows 16 MiB / 32K)
@@ -415,6 +490,53 @@ For high-frequency, short-duration operations where durability isn't critical:
 | Complex orchestration | Workflow |
 | High-frequency, low-latency | Direct calls |
 
+### Workflow vs Inline Mode Trade-offs
+
+For AI agent loops (LLM + tool calls), there are two execution patterns:
+
+**Workflow Mode** (durable):
+- Each iteration: journal load → LLM call → tool call → journal save
+- Inter-iteration gap: ~1.2-1.5s typical (up to 6s with scheduler fallback)
+- Total infrastructure overhead: ~79% in real measurements (arena project)
+- Crashes: workflow resumes from last completed step
+- Suitable for: production, long-running, must-complete operations
+
+**Inline Mode** (AI SDK loop):
+- Continuous execution in single function invocation
+- No inter-step persistence or scheduling overhead
+- ~10x faster for many-iteration workflows
+- Crashes: entire run lost, must restart from beginning
+- Suitable for: development, testing, short operations (< 10 min)
+
+**Key insight**: The durability guarantee adds significant overhead. Choose inline mode
+when you can tolerate restarts; choose workflow mode when completion is critical.
+
+### Measuring Workflow Overhead Accurately
+
+**⚠️ Common measurement pitfalls** (from arena project):
+
+1. **Wrong timestamp source**: Use precise start/end timestamps, not event timestamps
+2. **Multi-workflow interference**: Measure single workflows to avoid cross-contamination
+3. **Excluding LLM time**: Capture iteration start BEFORE the LLM call, not after
+
+**Recommended measurement approach**:
+```typescript
+// Phase 1: Capture TRUE iteration start
+const iterationStartTimestamp = Date.now();
+
+// ... do LLM call and tool execution ...
+
+// Phase 2: Capture iteration end
+const iterationEndTimestamp = Date.now();
+
+// Inter-iteration gap = next iteration start - this iteration end
+```
+
+**Key metrics to track**:
+- **accountabilityPct**: sum(measured times) / total time (should be 95-100%)
+- **avgInterIterationGapMs**: typical ~1.2-1.5s, outliers up to 6s
+- **avgStepOverheadMs**: workflow overhead per tool call (~100-300ms)
+
 * * *
 
 ## References
@@ -454,8 +576,8 @@ For high-frequency, short-duration operations where durability isn't critical:
 
 ```typescript
 // Workpool (shared.ts)
-SEGMENT_MS = 100;                    // Time granularity
-DEFAULT_MAX_PARALLELISM = 10;        // Default concurrent work
+SEGMENT_MS = 100;                    // Time granularity (100ms scheduling quantum)
+DEFAULT_MAX_PARALLELISM = 10;        // Default concurrent work for raw workpool
 
 // Workpool (loop.ts)
 RECOVERY_THRESHOLD_MS = 5 * MINUTE;  // Age for recovery
@@ -463,13 +585,24 @@ RECOVERY_PERIOD_SEGMENTS = 1 minute; // Recovery check interval
 CURSOR_BUFFER_SEGMENTS = 30 seconds; // Out-of-order buffer
 
 // Workflow (pool.ts)
-DEFAULT_MAX_PARALLELISM = 25;        // Default for workflows
+DEFAULT_MAX_PARALLELISM = 25;        // Default for workflows (overrides workpool default)
 DEFAULT_RETRY_BEHAVIOR = {
   maxAttempts: 5,
   initialBackoffMs: 500,
   base: 2,
 };
+
+// Convex Scheduler (crates/common/src/knobs.rs)
+SCHEDULED_JOB_EXECUTION_PARALLELISM = 10;  // Max concurrent scheduled jobs at backend level
 ```
+
+**⚠️ Parallelism Confusion**: There are THREE different parallelism limits:
+1. **Workpool maxParallelism** (default 10): How many work items the workpool processes concurrently
+2. **Workflow maxParallelism** (default 25): Overrides workpool default for workflow steps
+3. **Scheduler parallelism** (default 10): How many `ctx.scheduler.runAfter` jobs run concurrently
+
+The workflow's 25-step parallelism is bounded by the scheduler's 10-job limit, so actual
+concurrent execution is min(25, 10) = 10 steps unless scheduler parallelism is increased.
 
 ## Appendix B: Convex Scheduler Implementation
 
