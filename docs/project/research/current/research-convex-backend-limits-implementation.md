@@ -151,9 +151,9 @@ that generate multiple system documents per user write (e.g., index entries, met
 | Max fields per document | 1,024 | `value/src/object.rs:30` | **No** (hard-coded) |
 | Max nesting depth (user) | 16 levels | `common/src/document.rs:102` | **No** (hard-coded) |
 | Max nesting depth (system) | 64 levels | `value/src/size.rs:8` | **No** (hard-coded) |
-| Max array elements | 8,192 | `value/src/array.rs:26` | **No** (hard-coded) |
-| Max field name length | 1,024 chars | `sync_types/src/identifier.rs:124` | **No** (hard-coded) |
-| Max identifier length | 64 chars | `sync_types/src/identifier.rs:10` | **No** (hard-coded) |
+| Max array elements | 8,192 | `value/src/array.rs:27` | **No** (hard-coded) |
+| Max field name length | 1,024 chars | `convex/sync_types/src/identifier.rs:124` | **No** (hard-coded) |
+| Max identifier length | 64 chars | `convex/sync_types/src/identifier.rs:10` | **No** (hard-coded) |
 
 **Enforcement Locations**:
 
