@@ -4,7 +4,7 @@
  * Measures the relationship between step result payload size
  * and step overhead, particularly through step.runQuery().
  *
- * Related beads: cvx-6c37, cvx-w816
+ * Related beads: cvx-g6ac, cvx-vjh4
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";

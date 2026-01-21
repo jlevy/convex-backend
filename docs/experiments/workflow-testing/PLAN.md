@@ -2,7 +2,7 @@
 
 **Created**: 2026-01-20
 **Status**: Draft
-**Related Beads**: cvx-pznt, cvx-6c37, cvx-w816
+**Related Beads**: cvx-fcqi, cvx-g6ac, cvx-vjh4
 
 ## Objective
 
@@ -12,7 +12,7 @@ the arena project analysis.
 
 ## Investigation Targets
 
-### 1. Scheduler Wake-up Failure (cvx-pznt, P1)
+### 1. Scheduler Wake-up Failure (cvx-fcqi, P1)
 
 **Hypothesis**: After complex/long-running tool executions, the DB subscription wake-up
 sometimes fails, causing the scheduler to fall back to 5-second polling.
@@ -26,7 +26,7 @@ sometimes fails, causing the scheduler to fall back to 5-second polling.
 **Expected Outcome**: Understand when/why the ~6s gaps occur and whether this is
 a workpool issue, scheduler issue, or expected behavior under load.
 
-### 2. Large Payload Overhead (cvx-6c37, cvx-w816, P2)
+### 2. Large Payload Overhead (cvx-g6ac, cvx-vjh4, P2)
 
 **Hypothesis**: `step.runQuery()` returning large payloads incurs variable overhead
 proportional to payload size due to serialization through the workpool.
@@ -74,8 +74,8 @@ docs/experiments/workflow-testing/
 │   ├── testQueries.ts        # Test queries
 │   └── measurements.ts       # Timing capture mutations
 └── tests/
-    ├── scheduler-wakeup.test.ts     # Test for cvx-pznt
-    ├── payload-overhead.test.ts     # Test for cvx-6c37, cvx-w816
+    ├── scheduler-wakeup.test.ts     # Test for cvx-fcqi
+    ├── payload-overhead.test.ts     # Test for cvx-g6ac, cvx-vjh4
     ├── journal-scaling.test.ts      # Bonus: journal load scaling
     └── utils/
         ├── timing.ts                # Precision timing utilities
@@ -253,13 +253,13 @@ pnpm report           # Generates docs/experiments/workflow-testing/RESULTS.md
 
 ## Success Criteria
 
-### For cvx-pznt (Scheduler Wake-up)
+### For cvx-fcqi (Scheduler Wake-up)
 
 - **CONFIRMED** if: >10% of inter-iteration gaps exceed 5s after long steps
 - **DISPROVEN** if: gaps are consistently <2s regardless of step duration
 - **PARTIAL** if: gaps correlate with step duration but stay <5s
 
-### For cvx-6c37, cvx-w816 (Payload Overhead)
+### For cvx-g6ac, cvx-vjh4 (Payload Overhead)
 
 - **CONFIRMED** if: linear relationship between payload size and step overhead (R² > 0.8)
 - **DISPROVEN** if: no significant correlation (R² < 0.3)
@@ -285,7 +285,7 @@ pnpm report           # Generates docs/experiments/workflow-testing/RESULTS.md
 1. **Test Package**: Self-contained, runnable test suite
 2. **Results Document**: `RESULTS.md` with findings
 3. **Documentation Updates**: Revisions to workflow architecture doc
-4. **Bead Closures**: Close cvx-pznt, cvx-6c37, cvx-w816 with findings
+4. **Bead Closures**: Close cvx-fcqi, cvx-g6ac, cvx-vjh4 with findings
 
 ## Related Documentation
 

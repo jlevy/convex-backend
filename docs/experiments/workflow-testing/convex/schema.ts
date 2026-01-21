@@ -59,7 +59,7 @@ export default defineSchema({
    * - journal_replay_start: Before replaying completed steps
    * - journal_replay_end: After replaying completed steps
    *
-   * Related beads: cvx-r7di, cvx-c6rk, cvx-yoap, cvx-md6f
+   * Related beads: cvx-88z7, cvx-d3nl, cvx-ox3h, cvx-w9ev
    */
   timingEvents: defineTable({
     workflowId: v.string(),

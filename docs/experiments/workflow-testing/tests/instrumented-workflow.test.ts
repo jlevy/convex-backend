@@ -19,7 +19,7 @@
  * - handlerSetupMs: Journal replay + context setup (handler_start → first pre_step)
  * - interInvocationMs: Scheduler wake-up delay (handler_end → next handler_start)
  *
- * Related beads: cvx-r7di, cvx-c6rk, cvx-yoap, cvx-md6f
+ * Related beads: cvx-88z7, cvx-d3nl, cvx-ox3h, cvx-w9ev
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";

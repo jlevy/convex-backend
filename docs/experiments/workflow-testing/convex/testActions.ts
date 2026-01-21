@@ -109,7 +109,7 @@ export const noopAction = internalAction({
  * The external engineer observed ~6s inter-iteration gaps after this type of tool,
  * possibly due to DB subscription wake-up failures.
  *
- * Related beads: cvx-pznt, cvx-v6tf
+ * Related beads: cvx-fcqi, cvx-1l22
  */
 export const simulateLlmFilteredWebSearch = internalAction({
   args: {
@@ -197,7 +197,7 @@ export const simulateLlmFilteredWebSearch = internalAction({
  * Simulates a simple, fast tool for comparison.
  * Like stock_prices_historical which showed ~1.1s gaps.
  *
- * Related bead: cvx-pznt (for comparison)
+ * Related bead: cvx-fcqi (for comparison)
  */
 export const simulateSimpleTool = internalAction({
   args: {
@@ -247,7 +247,7 @@ export const simulateSimpleTool = internalAction({
 
 // ============================================================================
 // Instrumented Actions for Full Timing Analysis
-// Related beads: cvx-r7di, cvx-c6rk, cvx-yoap, cvx-md6f
+// Related beads: cvx-88z7, cvx-d3nl, cvx-ox3h, cvx-w9ev
 // ============================================================================
 
 /**

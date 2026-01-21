@@ -19,7 +19,7 @@ export const workflow = new WorkflowManager(components.workflow);
  * Runs a series of steps with varying durations to test
  * scheduler wake-up behavior and inter-iteration gaps.
  *
- * Related bead: cvx-pznt
+ * Related bead: cvx-fcqi
  */
 export const variableDurationWorkflow = workflow.define({
   args: {
@@ -70,7 +70,7 @@ export const variableDurationWorkflow = workflow.define({
  * Runs steps that return payloads of varying sizes to test
  * the overhead from serialization/deserialization through workpool.
  *
- * Related beads: cvx-6c37, cvx-w816
+ * Related beads: cvx-g6ac, cvx-vjh4
  */
 export const variablePayloadWorkflow = workflow.define({
   args: {
@@ -192,7 +192,7 @@ export const journalScalingWorkflow = workflow.define({
  * This workflow measures gaps after each tool type to identify
  * scheduler wake-up failures.
  *
- * Related beads: cvx-pznt, cvx-v6tf
+ * Related beads: cvx-fcqi, cvx-1l22
  */
 export const mixedToolPatternWorkflow = workflow.define({
   args: {
@@ -328,7 +328,7 @@ export const mixedToolPatternWorkflow = workflow.define({
  *
  * The external engineer observed only ~63% accountability (37% unaccounted).
  *
- * Related bead: cvx-13wu
+ * Related bead: cvx-5kc4
  */
 export const accountabilityTrackingWorkflow = workflow.define({
   args: {
@@ -482,7 +482,7 @@ export const minimalOverheadWorkflow = workflow.define({
 
 // ============================================================================
 // Fully-Instrumented Workflow for Deep Timing Analysis
-// Related beads: cvx-r7di, cvx-c6rk, cvx-yoap, cvx-md6f
+// Related beads: cvx-88z7, cvx-d3nl, cvx-ox3h, cvx-w9ev
 // ============================================================================
 
 /**
@@ -633,7 +633,7 @@ export const fullyInstrumentedWorkflow = workflow.define({
  * - internalId: The internal workflow ID for status polling
  * - correlationId: The correlation ID for timing event analysis
  *
- * Related beads: cvx-r7di, cvx-c6rk, cvx-yoap, cvx-md6f
+ * Related beads: cvx-88z7, cvx-d3nl, cvx-ox3h, cvx-w9ev
  */
 export const startFullyInstrumentedWorkflow = mutation({
   args: {
@@ -743,7 +743,7 @@ export const startMinimalOverheadWorkflow = mutation({
 /**
  * Starts a mixed tool pattern workflow and returns the workflow ID.
  *
- * Related beads: cvx-pznt, cvx-v6tf
+ * Related beads: cvx-fcqi, cvx-1l22
  */
 export const startMixedToolPatternWorkflow = mutation({
   args: {
@@ -769,7 +769,7 @@ export const startMixedToolPatternWorkflow = mutation({
 /**
  * Starts an accountability tracking workflow and returns the workflow ID.
  *
- * Related bead: cvx-13wu
+ * Related bead: cvx-5kc4
  */
 export const startAccountabilityTrackingWorkflow = mutation({
   args: {

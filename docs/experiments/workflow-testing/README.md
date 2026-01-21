@@ -77,7 +77,7 @@ pnpm test
 Investigates whether DB subscription wake-up fails after long-running steps,
 causing fallback to 5-second polling.
 
-**Related Bead**: cvx-pznt
+**Related Bead**: cvx-fcqi
 
 ```bash
 pnpm test:scheduler
@@ -87,7 +87,7 @@ pnpm test:scheduler
 
 Measures the relationship between step result payload size and step overhead.
 
-**Related Beads**: cvx-6c37, cvx-w816
+**Related Beads**: cvx-g6ac, cvx-vjh4
 
 ```bash
 pnpm test:payload
@@ -231,7 +231,7 @@ export default defineConfig({
 
 ## Research Findings
 
-### Fully-Instrumented Workflow Analysis (cvx-r7di)
+### Fully-Instrumented Workflow Analysis (cvx-88z7)
 
 The fully-instrumented workflow test captures timing at every point to achieve near-100%
 accountability of workflow execution time:
@@ -295,7 +295,7 @@ UNACCOUNTED                5575ms    8.1%
 
 ### Related Beads
 
-- cvx-r7di: Create fully-instrumented workflow (P0) - COMPLETED
-- cvx-c6rk: Investigate journal load time scaling
-- cvx-yoap: Investigate workpool coordination overhead
-- cvx-md6f: Investigate step completion handling overhead
+- cvx-88z7: Create fully-instrumented workflow (P0) - COMPLETED
+- cvx-d3nl: Investigate journal load time scaling
+- cvx-ox3h: Investigate workpool coordination overhead
+- cvx-w9ev: Investigate step completion handling overhead

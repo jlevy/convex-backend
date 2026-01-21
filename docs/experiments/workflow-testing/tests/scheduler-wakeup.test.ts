@@ -4,7 +4,7 @@
  * Investigates whether the DB subscription wake-up fails after
  * long-running steps, causing fallback to 5-second polling.
  *
- * Related bead: cvx-pznt
+ * Related bead: cvx-fcqi
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";

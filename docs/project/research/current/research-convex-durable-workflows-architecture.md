@@ -293,7 +293,7 @@ In typical workflow timing measurements, some `step.run*()` calls are not instru
 | `step.runQuery(getStatus)` | Cancellation check | Before LLM call | ~100-300ms |
 | `step.runMutation(persist*)` | Save state | After tool execution | Measured |
 | `step.runQuery(getResult)` | Idempotency check | Before tool execution | ~100-300ms |
-| `step.runQuery(getResult)` | Timing/result fetch | After tool execution | **Variable** (Bug: cvx-w816, Outliers: cvx-vfxn) |
+| `step.runQuery(getResult)` | Timing/result fetch | After tool execution | **Variable** (Bug: cvx-vjh4, Outliers: cvx-2t3o) |
 
 **Large payload effect**: The timing/result query returns the full tool result. For tools
 returning large payloads (e.g., web search results, API responses), this query takes longer
@@ -307,7 +307,7 @@ because the entire result must be serialized through the workpool round-trip.
 The overhead varies with payload size due to serialization and DB write costs.
 
 **Mitigation**: Design step return values to be small (IDs, status flags). Store large
-results directly in the database and return only references. **(Verification: cvx-6c37)**
+results directly in the database and return only references. **(Verification: cvx-g6ac)**
 
 ### Detailed Overhead Breakdown (From Arena Project Analysis)
 
@@ -325,7 +325,7 @@ A comprehensive analysis of a 9-iteration workflow (203 seconds total) reveals:
 | **Unmeasured** | 31s | 15.4% | Gap between total time and sum of measurements |
 
 **Key insight**: ~37% of workflow time (unaccounted + unmeasured) is not captured in typical
-timing instrumentation. **(Investigation: cvx-13wu)** This comes from:
+timing instrumentation. **(Investigation: cvx-5kc4)** This comes from:
 
 1. **Unmeasured step.run*() calls**: Cancellation checks, idempotency queries (~2-4s/iteration)
 2. **Journal load time**: Grows O(N), not typically instrumented (~50-200ms/iteration)
@@ -376,7 +376,7 @@ For a 9-iteration workflow with 60 total steps: 60 steps / 9 iterations = 6.7 st
 
 The ~6s gaps occur specifically after `llm_filtered_web_search` because this tool involves
 multiple LLM + API calls and takes longer to complete, potentially causing the DB subscription
-wake-up to be missed. **(Investigation: cvx-pznt, Test case: cvx-v6tf)**
+wake-up to be missed. **(Investigation: cvx-fcqi, Test case: cvx-1l22)**
 
 * * *
 
@@ -601,21 +601,21 @@ if (tool?.execute == null) {
 
 | Bead ID | Priority | Issue | Test File |
 | --- | --- | --- | --- |
-| cvx-13wu | P1 | Investigate 37% unaccounted/unmeasured time in workflow runs | `external-engineer-issues.test.ts` |
-| cvx-pznt | P1 | DB subscription wake-up failure after complex tools (6s gaps) | `external-engineer-issues.test.ts` |
-| cvx-6c37 | P2 | Verify large payload overhead claim | `payload-overhead.test.ts`, `external-engineer-issues.test.ts` |
-| ~~cvx-v6tf~~ | ~~P2~~ | ~~Add test case for `llm_filtered_web_search` pattern~~ | ✅ DONE: `external-engineer-issues.test.ts` |
-| cvx-vfxn | P2 | Step overhead P95 outliers (5.8s vs 1.2s typical) | `external-engineer-issues.test.ts` |
-| cvx-w816 | P2 | step.runQuery latency bug - full result through workpool | `payload-overhead.test.ts` |
+| cvx-5kc4 | P1 | Investigate 37% unaccounted/unmeasured time in workflow runs | `external-engineer-issues.test.ts` |
+| cvx-fcqi | P1 | DB subscription wake-up failure after complex tools (6s gaps) | `external-engineer-issues.test.ts` |
+| cvx-g6ac | P2 | Verify large payload overhead claim | `payload-overhead.test.ts`, `external-engineer-issues.test.ts` |
+| ~~cvx-1l22~~ | ~~P2~~ | ~~Add test case for `llm_filtered_web_search` pattern~~ | ✅ DONE: `external-engineer-issues.test.ts` |
+| cvx-2t3o | P2 | Step overhead P95 outliers (5.8s vs 1.2s typical) | `external-engineer-issues.test.ts` |
+| cvx-vjh4 | P2 | step.runQuery latency bug - full result through workpool | `payload-overhead.test.ts` |
 
 ### External Engineer Issue Reproduction Tests
 
 A comprehensive test file has been created at `docs/experiments/workflow-testing/tests/external-engineer-issues.test.ts` that specifically reproduces the issues from the external engineer's analysis:
 
-1. **cvx-13wu: 37% Unaccounted Time** - `accountabilityTrackingWorkflow` measures total workflow time vs sum of measured components
-2. **cvx-pznt, cvx-v6tf: 6s Gaps After Complex Tools** - `mixedToolPatternWorkflow` simulates the llm_filtered_web_search pattern
-3. **cvx-vfxn: Step Overhead P95 Outliers** - Uses `minimalOverheadWorkflow` with variance analysis
-4. **cvx-6c37: Large Payload Overhead** - Uses `variablePayloadWorkflow` with linear regression
+1. **cvx-5kc4: 37% Unaccounted Time** - `accountabilityTrackingWorkflow` measures total workflow time vs sum of measured components
+2. **cvx-fcqi, cvx-1l22: 6s Gaps After Complex Tools** - `mixedToolPatternWorkflow` simulates the llm_filtered_web_search pattern
+3. **cvx-2t3o: Step Overhead P95 Outliers** - Uses `minimalOverheadWorkflow` with variance analysis
+4. **cvx-g6ac: Large Payload Overhead** - Uses `variablePayloadWorkflow` with linear regression
 
 New actions added to support these tests:
 - `simulateLlmFilteredWebSearch`: Multi-phase action (search → LLM filter passes → large result)
@@ -625,10 +625,10 @@ New actions added to support these tests:
 
 | Bead ID | Priority | Task |
 | --- | --- | --- |
-| cvx-434r | P2 | Cross-reference workflow-testing harness against attic/workflow examples |
-| cvx-lzpf | P3 | Add onComplete handler pattern to workflow-testing harness |
-| cvx-h581 | P3 | Add workflow event testing (awaitEvent/sendEvent) to testing harness |
-| cvx-9enk | P3 | Document unit test vs integration test approaches |
+| cvx-qmwt | P2 | Cross-reference workflow-testing harness against attic/workflow examples |
+| cvx-ndxf | P3 | Add onComplete handler pattern to workflow-testing harness |
+| cvx-5i6y | P3 | Add workflow event testing (awaitEvent/sendEvent) to testing harness |
+| cvx-h63b | P3 | Document unit test vs integration test approaches |
 
 ### Workflow-Testing Harness Cross-Reference Analysis
 
@@ -641,16 +641,16 @@ Comparing `docs/experiments/workflow-testing/` against `attic/workflow/workflow/
 - Status polling via `workflow.status()`
 
 **Gaps identified (tracked as beads):**
-1. **Missing onComplete pattern** (cvx-lzpf): Official examples use `onComplete` callback
+1. **Missing onComplete pattern** (cvx-ndxf): Official examples use `onComplete` callback
    with context to handle workflow completion and cleanup. Useful for automatic result recording.
 
 2. **No retry configuration**: Official example shows `workpoolOptions: { retryActionsByDefault: true }`
    and per-step retry overrides. Testing harness doesn't configure retries.
 
-3. **Missing event tests** (cvx-h581): Official example shows `ctx.awaitEvent()` and
+3. **Missing event tests** (cvx-5i6y): Official example shows `ctx.awaitEvent()` and
    `workflow.sendEvent()` for human-in-the-loop patterns. Not tested in harness.
 
-4. **Test approach documentation** (cvx-9enk): Official uses `initConvexTest()` with fake
+4. **Test approach documentation** (cvx-h63b): Official uses `initConvexTest()` with fake
    timers for unit tests. Our harness uses live `ConvexHttpClient` for integration tests.
    Both approaches are valid for different purposes - needs documentation.
 
@@ -907,7 +907,7 @@ The scheduler itself adds minimal latency because:
 **Observed pattern**: After `llm_filtered_web_search` or other complex multi-step tools,
 inter-iteration gaps can jump from ~1.2s to ~6s.
 
-**Root cause analysis** (requires further investigation - see cvx-pznt):
+**Root cause analysis** (requires further investigation - see cvx-fcqi):
 
 1. **Long-running tools hypothesis**: Complex tools that involve multiple LLM calls and API
    requests take longer to complete. During this extended execution:

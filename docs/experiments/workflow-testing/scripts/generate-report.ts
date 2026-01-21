@@ -131,11 +131,11 @@ async function main() {
   // Add interpretation section
   lines.push("## Findings");
   lines.push("");
-  lines.push("### Scheduler Wake-up (cvx-pznt)");
+  lines.push("### Scheduler Wake-up (cvx-fcqi)");
   lines.push("");
   lines.push("*Run the scheduler tests and analyze the output for gap patterns.*");
   lines.push("");
-  lines.push("### Payload Overhead (cvx-6c37, cvx-w816)");
+  lines.push("### Payload Overhead (cvx-g6ac, cvx-vjh4)");
   lines.push("");
   lines.push("*Run the payload tests and check the correlation analysis.*");
   lines.push("");
