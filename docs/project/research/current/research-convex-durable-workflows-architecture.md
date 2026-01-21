@@ -599,14 +599,27 @@ if (tool?.execute == null) {
 
 ### Active Investigations (Tracked Beads)
 
-| Bead ID | Priority | Issue |
-| --- | --- | --- |
-| cvx-13wu | P1 | Investigate 37% unaccounted/unmeasured time in workflow runs |
-| cvx-pznt | P1 | DB subscription wake-up failure after complex tools (6s gaps) |
-| cvx-6c37 | P2 | Verify large payload overhead claim |
-| cvx-v6tf | P2 | Add test case for `llm_filtered_web_search` pattern |
-| cvx-vfxn | P2 | Step overhead P95 outliers (5.8s vs 1.2s typical) |
-| cvx-w816 | P2 | step.runQuery latency bug - full result through workpool |
+| Bead ID | Priority | Issue | Test File |
+| --- | --- | --- | --- |
+| cvx-13wu | P1 | Investigate 37% unaccounted/unmeasured time in workflow runs | `external-engineer-issues.test.ts` |
+| cvx-pznt | P1 | DB subscription wake-up failure after complex tools (6s gaps) | `external-engineer-issues.test.ts` |
+| cvx-6c37 | P2 | Verify large payload overhead claim | `payload-overhead.test.ts`, `external-engineer-issues.test.ts` |
+| ~~cvx-v6tf~~ | ~~P2~~ | ~~Add test case for `llm_filtered_web_search` pattern~~ | ✅ DONE: `external-engineer-issues.test.ts` |
+| cvx-vfxn | P2 | Step overhead P95 outliers (5.8s vs 1.2s typical) | `external-engineer-issues.test.ts` |
+| cvx-w816 | P2 | step.runQuery latency bug - full result through workpool | `payload-overhead.test.ts` |
+
+### External Engineer Issue Reproduction Tests
+
+A comprehensive test file has been created at `docs/experiments/workflow-testing/tests/external-engineer-issues.test.ts` that specifically reproduces the issues from the external engineer's analysis:
+
+1. **cvx-13wu: 37% Unaccounted Time** - `accountabilityTrackingWorkflow` measures total workflow time vs sum of measured components
+2. **cvx-pznt, cvx-v6tf: 6s Gaps After Complex Tools** - `mixedToolPatternWorkflow` simulates the llm_filtered_web_search pattern
+3. **cvx-vfxn: Step Overhead P95 Outliers** - Uses `minimalOverheadWorkflow` with variance analysis
+4. **cvx-6c37: Large Payload Overhead** - Uses `variablePayloadWorkflow` with linear regression
+
+New actions added to support these tests:
+- `simulateLlmFilteredWebSearch`: Multi-phase action (search → LLM filter passes → large result)
+- `simulateSimpleTool`: Fast, small payload action for comparison
 
 ### Documentation & Testing Harness Tasks
 
