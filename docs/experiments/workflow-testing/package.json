@@ -12,6 +12,7 @@
     "test:scheduler": "vitest run --testNamePattern 'scheduler'",
     "test:payload": "vitest run --testNamePattern 'payload'",
     "test:journal": "vitest run --testNamePattern 'journal'",
+    "test:variance": "vitest run --testNamePattern 'variance'",
     "setup": "./scripts/setup.sh",
     "teardown": "./scripts/teardown.sh",
     "report": "tsx scripts/generate-report.ts"

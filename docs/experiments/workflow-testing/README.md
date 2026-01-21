@@ -150,6 +150,17 @@ Verifies O(N) scaling of journal load time with iteration count.
 pnpm test:journal
 ```
 
+### Variance Analysis Tests (`test:variance`)
+
+Analyzes distribution of step overhead times to identify P95 outliers and
+understand the gap between typical (1.2s) and P95 (5.8s) overhead.
+
+**Related Bead**: cvx-2t3o
+
+```bash
+pnpm test:variance
+```
+
 ## Configuration
 
 ### Environment Variables

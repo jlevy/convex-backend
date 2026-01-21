@@ -209,9 +209,37 @@ export const logTimingEventsBatch = internalMutation({
 });
 
 /**
- * Retrieves all timing events for a workflow.
+ * Retrieves all timing events for a workflow (internal).
  */
-export const getTimingEvents = internalMutation({
+export const getTimingEventsInternal = internalMutation({
+  args: {
+    workflowId: v.string(),
+  },
+  returns: v.array(
+    v.object({
+      _id: v.id("timingEvents"),
+      _creationTime: v.number(),
+      workflowId: v.string(),
+      invocationNumber: v.number(),
+      stepIndex: v.optional(v.number()),
+      eventType: v.string(),
+      timestamp: v.number(),
+      metadata: v.optional(v.any()),
+    })
+  ),
+  handler: async (ctx, { workflowId }) => {
+    return await ctx.db
+      .query("timingEvents")
+      .withIndex("by_workflow", (q) => q.eq("workflowId", workflowId))
+      .collect();
+  },
+});
+
+/**
+ * Public query to retrieve timing events for a workflow.
+ * Used by tests to analyze overhead variance (cvx-2t3o).
+ */
+export const getTimingEvents = query({
   args: {
     workflowId: v.string(),
   },
