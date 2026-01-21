@@ -22,10 +22,11 @@ cross-references, and pricing verification)
 
 **Related Research**:
 
-- [research-convex-backend-limits-implementation.md](../../../project/research/current/research-convex-backend-limits-implementation.md) —
-  Deep dive into source code implementation of limits and configurability for self-hosted deployments
 - [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md) —
   Workflow and workpool architecture, overhead analysis, and best practices for durable workflows
+
+> Note: Backend limits implementation details (source code verification, self-hosted configuration)
+> have been integrated into this document.
 
 * * *
 
