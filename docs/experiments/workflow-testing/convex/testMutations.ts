@@ -722,7 +722,7 @@ export const handleWorkflowComplete = internalMutation({
   args: {
     workflowId: v.string(),
     result: v.optional(v.any()),
-    context: v.optional(v.any()),
+    context: v.any(),  // Required by OnCompleteArgs
   },
   returns: v.null(),
   handler: async (ctx, { workflowId, result, context }) => {

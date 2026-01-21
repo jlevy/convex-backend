@@ -981,7 +981,8 @@ export const eventBasedWorkflow = workflow.define({
     const waitStart = Date.now();
     console.log(`[eventBasedWorkflow] waiting for 'userApproval' event...`);
 
-    const approvalEvent = await step.waitForEvent("userApproval", {
+    const approvalEvent = await step.awaitEvent({
+      name: "userApproval",
       // Timeout after 60 seconds (optional)
       timeoutMs: 60000,
     });
@@ -1065,7 +1066,8 @@ export const sendApprovalEvent = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
-    await workflow.sendEvent(ctx, args.workflowId as WorkflowId, {
+    await workflow.sendEvent(ctx, {
+      workflowId: args.workflowId as WorkflowId,
       name: "userApproval",
       value: {
         approved: args.approved,
