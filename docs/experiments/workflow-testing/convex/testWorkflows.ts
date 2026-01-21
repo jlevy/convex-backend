@@ -803,6 +803,89 @@ export const getWorkflowStatus = query({
 });
 
 // ============================================================================
+// runQuery vs runAction Comparison Workflow (cvx-vjh4)
+// Compares overhead of step.runQuery vs step.runAction with same payload
+// ============================================================================
+
+/**
+ * Variable Payload Workflow using runAction
+ *
+ * This is identical to variablePayloadWorkflow but uses step.runAction
+ * instead of step.runQuery. This allows direct comparison of overhead.
+ *
+ * Related bead: cvx-vjh4
+ */
+export const variablePayloadActionWorkflow = workflow.define({
+  args: {
+    payloadSizes: v.array(v.number()),
+  },
+  returns: v.object({
+    measurements: v.array(
+      v.object({
+        sizeBytes: v.number(),
+        elapsedMs: v.number(),
+        resultLength: v.number(),
+      })
+    ),
+    method: v.literal("runAction"),
+  }),
+  handler: async (step, args) => {
+    const measurements: Array<{
+      sizeBytes: number;
+      elapsedMs: number;
+      resultLength: number;
+    }> = [];
+
+    console.log(
+      `[variablePayloadActionWorkflow] starting with ${args.payloadSizes.length} payload sizes (using runAction)`
+    );
+
+    for (const sizeBytes of args.payloadSizes) {
+      const start = Date.now();
+
+      // Use step.runAction instead of step.runQuery
+      const result = await step.runAction(internal.testActions.generatePayload, {
+        sizeBytes,
+      });
+
+      const elapsed = Date.now() - start;
+      console.log(
+        `[variablePayloadActionWorkflow] payload ${sizeBytes} bytes: ${elapsed}ms`
+      );
+
+      measurements.push({
+        sizeBytes,
+        elapsedMs: elapsed,
+        resultLength: result.payload.length,
+      });
+    }
+
+    return { measurements, method: "runAction" as const };
+  },
+});
+
+/**
+ * Starts the runAction-based payload workflow for comparison.
+ *
+ * Related bead: cvx-vjh4
+ */
+export const startVariablePayloadActionWorkflow = mutation({
+  args: {
+    payloadSizes: v.array(v.number()),
+  },
+  returns: v.string(),
+  handler: async (ctx, args): Promise<string> => {
+    const id: WorkflowId = await workflow.start(
+      ctx,
+      internal.testWorkflows.variablePayloadActionWorkflow,
+      { payloadSizes: args.payloadSizes }
+    );
+    console.log(`[startVariablePayloadActionWorkflow] started workflow ${id}`);
+    return id;
+  },
+});
+
+// ============================================================================
 // onComplete Handler Pattern Example (cvx-ndxf)
 // Demonstrates using the onComplete callback from official workflow examples
 // ============================================================================

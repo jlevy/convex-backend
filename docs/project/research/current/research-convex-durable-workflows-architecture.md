@@ -699,13 +699,35 @@ The fully-instrumented workflow (cvx-88z7) answered multiple investigation quest
 ### Remaining Investigations
 
 1. **cvx-fcqi: 6s Gaps** - Need tests with long-running steps to reproduce scheduler fallback
-2. **cvx-g6ac: Payload Overhead** - Need tests with varying payload sizes
-3. **cvx-2t3o: P95 Outliers** - Need variance analysis across many runs
-4. **cvx-vjh4: runQuery Latency** - Need to compare runQuery vs runAction overhead
+   - Test: `scheduler-wakeup.test.ts` with 5s+ step durations
+   - Hypothesis: Scheduler falls back to 5s polling after long steps
 
-New actions added to support these tests:
+2. **cvx-g6ac: Payload Overhead** - Testing infrastructure complete
+   - Test: `payload-overhead.test.ts` with linear regression analysis
+   - Hypothesis: Payload size correlates linearly with step overhead (R² > 0.8)
+   - Expected: ~0.01-0.1ms overhead per KB due to serialization
+
+3. **cvx-2t3o: P95 Outliers** - Need variance analysis across many runs
+   - Test: Multiple runs of any workflow, analyze p95/p99 distribution
+   - Hypothesis: Scheduler contention causes occasional 5.8s spikes
+
+4. **cvx-vjh4: runQuery vs runAction Latency** - Testing infrastructure complete
+   - Test: `payload-overhead.test.ts` comparison test added
+   - **Theoretical Prediction**: Both should have similar overhead because:
+     - Both go through workpool for durable execution
+     - Both store results in journal (same serialization cost)
+     - The difference should be execution time, not workpool overhead
+   - If runQuery shows higher overhead, it would indicate a bug in the workflow library
+
+**Test Infrastructure Added:**
+- `variablePayloadActionWorkflow`: Uses `step.runAction` for direct comparison
+- `startVariablePayloadActionWorkflow`: Mutation to start the comparison workflow
+- Comparison test in `payload-overhead.test.ts` runs both and compares results
+
+**Supporting Actions:**
 - `simulateLlmFilteredWebSearch`: Multi-phase action (search → LLM filter passes → large result)
 - `simulateSimpleTool`: Fast, small payload action for comparison
+- `generatePayload` (action): Generates payload via action for comparison testing
 
 ### Documentation & Testing Harness Tasks
 

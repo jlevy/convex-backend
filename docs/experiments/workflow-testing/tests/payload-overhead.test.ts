@@ -217,6 +217,90 @@ describe("payload overhead", () => {
     }
   });
 
+  it("should compare step.runQuery vs step.runAction overhead (cvx-vjh4)", async () => {
+    console.log("\n[test] Comparing runQuery vs runAction with same payloads");
+
+    const payloadSizes = [10240, 102400, 512000]; // 10KB, 100KB, 500KB
+
+    // Run with runQuery
+    console.log("[test] Running with step.runQuery...");
+    const queryWorkflowId = await client.mutation(api.testWorkflows.startVariablePayloadWorkflow, {
+      payloadSizes,
+    });
+
+    let queryResult;
+    for (let i = 0; i < 180; i++) {
+      const status = await client.query(api.testWorkflows.getWorkflowStatus, {
+        workflowId: queryWorkflowId,
+      });
+      if (status.type === "completed" && status.result) {
+        queryResult = status.result;
+        break;
+      }
+      if (status.type === "failed") {
+        throw new Error(`Query workflow failed: ${JSON.stringify(status)}`);
+      }
+      await sleep(1000);
+    }
+
+    // Run with runAction
+    console.log("[test] Running with step.runAction...");
+    const actionWorkflowId = await client.mutation(api.testWorkflows.startVariablePayloadActionWorkflow, {
+      payloadSizes,
+    });
+
+    let actionResult;
+    for (let i = 0; i < 180; i++) {
+      const status = await client.query(api.testWorkflows.getWorkflowStatus, {
+        workflowId: actionWorkflowId,
+      });
+      if (status.type === "completed" && status.result) {
+        actionResult = status.result;
+        break;
+      }
+      if (status.type === "failed") {
+        throw new Error(`Action workflow failed: ${JSON.stringify(status)}`);
+      }
+      await sleep(1000);
+    }
+
+    expect(queryResult).toBeDefined();
+    expect(actionResult).toBeDefined();
+
+    console.log("\n[test] Comparison Results:");
+    console.log("| Size (KB) | runQuery (ms) | runAction (ms) | Diff (ms) | Query/Action Ratio |");
+    console.log("|-----------|---------------|----------------|-----------|-------------------|");
+
+    for (let i = 0; i < payloadSizes.length; i++) {
+      const sizeKb = payloadSizes[i] / 1024;
+      const queryMs = queryResult.measurements[i].elapsedMs;
+      const actionMs = actionResult.measurements[i].elapsedMs;
+      const diff = queryMs - actionMs;
+      const ratio = queryMs / actionMs;
+
+      console.log(
+        `| ${sizeKb.toFixed(0).padStart(9)} | ${queryMs.toFixed(0).padStart(13)} | ${actionMs.toFixed(0).padStart(14)} | ${diff.toFixed(0).padStart(9)} | ${ratio.toFixed(2).padStart(17)} |`
+      );
+    }
+
+    console.log("\n[test] Interpretation:");
+    const avgQueryMs = queryResult.measurements.reduce((a: number, m: any) => a + m.elapsedMs, 0) / queryResult.measurements.length;
+    const avgActionMs = actionResult.measurements.reduce((a: number, m: any) => a + m.elapsedMs, 0) / actionResult.measurements.length;
+    const avgRatio = avgQueryMs / avgActionMs;
+
+    console.log(`  Average runQuery: ${avgQueryMs.toFixed(0)}ms`);
+    console.log(`  Average runAction: ${avgActionMs.toFixed(0)}ms`);
+    console.log(`  Average ratio: ${avgRatio.toFixed(2)}x`);
+
+    if (avgRatio > 1.2) {
+      console.log("  CONFIRMED (cvx-vjh4): runQuery has measurably higher overhead than runAction");
+    } else if (avgRatio < 0.8) {
+      console.log("  UNEXPECTED: runAction has higher overhead than runQuery");
+    } else {
+      console.log("  DISPROVEN (cvx-vjh4): No significant difference between runQuery and runAction");
+    }
+  });
+
   it("should establish baseline overhead with minimal payload", async () => {
     console.log("\n[test] Measuring baseline overhead with noop steps");
 

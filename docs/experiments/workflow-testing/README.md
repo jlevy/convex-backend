@@ -9,6 +9,51 @@ and workpool behavior, specifically targeting potential bugs and performance iss
 - pnpm 8+
 - Convex CLI (`npm install -g convex`)
 
+## Local Development (Recommended)
+
+**This entire testing framework is designed to run locally without any cloud deployments.**
+Using a local Convex backend ensures reliable, reproducible measurements free from network
+latency and cloud variability.
+
+### Why Local?
+
+| Aspect | Local Convex | Cloud Convex |
+|--------|-------------|--------------|
+| **Reproducibility** | ✅ Consistent timing | ❌ Network variance |
+| **Cost** | ✅ Free | ⚠️ Usage-based |
+| **Latency** | ✅ ~0ms network | ❌ 50-200ms RTT |
+| **Isolation** | ✅ No interference | ❌ Shared resources |
+| **Debugging** | ✅ Full local logs | ⚠️ Dashboard only |
+
+### Local Setup
+
+```bash
+# 1. Install dependencies
+cd docs/experiments/workflow-testing
+pnpm install
+
+# 2. Start local Convex backend (runs on http://127.0.0.1:3210)
+pnpm dev
+
+# 3. In another terminal, run tests against local backend
+CONVEX_URL=http://127.0.0.1:3210 pnpm test
+```
+
+The local Convex development server automatically:
+- Creates an isolated local database
+- Deploys your Convex functions on file changes
+- Provides a local dashboard at http://127.0.0.1:3210
+- Logs all function executions to the terminal
+
+### Verifying Local Connection
+
+Tests default to `CONVEX_URL=http://127.0.0.1:3210`. You should see:
+```
+[test] Connected to Convex at http://127.0.0.1:3210
+```
+
+If you see connection errors, ensure `pnpm dev` is running in another terminal.
+
 ## Source Code References
 
 **IMPORTANT**: Before making changes or investigating issues, ensure you have the
@@ -59,16 +104,20 @@ When investigating issues:
 
 ## Quick Start
 
+All tests run against a **local Convex backend** by default for reproducible measurements:
+
 ```bash
 # Install dependencies
 pnpm install
 
-# Start local Convex development server
+# Start local Convex development server (Terminal 1)
 pnpm dev
 
-# In another terminal, run tests
+# Run tests against local backend (Terminal 2)
 pnpm test
 ```
+
+The test harness connects to `http://127.0.0.1:3210` by default. No cloud deployment required.
 
 ## Test Suites
 
@@ -105,14 +154,16 @@ pnpm test:journal
 
 ### Environment Variables
 
-Create `.env.local` with:
+**No configuration required for local development.** Tests default to the local Convex server.
+
+For optional cloud testing, create `.env.local`:
 
 ```bash
-# Use local Convex server (default)
-CONVEX_DEPLOYMENT=local
+# Default: local Convex server (recommended for reproducible measurements)
+CONVEX_URL=http://127.0.0.1:3210
 
-# Or use a Convex Cloud project
-# CONVEX_DEPLOYMENT=https://your-project.convex.cloud
+# Optional: Convex Cloud project (introduces network variance)
+# CONVEX_URL=https://your-project.convex.cloud
 ```
 
 ### Test Configuration
@@ -139,9 +190,10 @@ This creates `RESULTS.md` with:
 
 ### Integration Testing (This Harness)
 
-This test harness uses **live integration testing** with `ConvexHttpClient`:
+This test harness uses **live integration testing** against a **local Convex backend**:
 
 ```typescript
+// Tests connect to local Convex (http://127.0.0.1:3210)
 const client = new ConvexHttpClient(CONVEX_URL);
 const workflowId = await client.mutation(api.testWorkflows.startWorkflow, args);
 // Poll for completion
@@ -152,11 +204,13 @@ const status = await client.query(api.testWorkflows.getWorkflowStatus, { workflo
 - Tests real workflow/workpool behavior in actual Convex environment
 - Measures real timing characteristics (overhead, gaps, latency)
 - Catches production-like issues
+- **Local backend eliminates network latency variance**
+- **Reproducible measurements across runs**
+- **No cloud costs or rate limits**
 
 **Disadvantages:**
-- Slower (real time delays)
-- Requires running Convex dev server
-- Non-deterministic timing
+- Slower than fake timers (real time delays)
+- Requires running local Convex dev server
 
 ### Unit Testing (Official Example Pattern)
 
