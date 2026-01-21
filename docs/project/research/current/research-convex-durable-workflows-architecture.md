@@ -309,6 +309,75 @@ The overhead varies with payload size due to serialization and DB write costs.
 **Mitigation**: Design step return values to be small (IDs, status flags). Store large
 results directly in the database and return only references.
 
+### Detailed Overhead Breakdown (From Arena Project Analysis)
+
+A comprehensive analysis of a 9-iteration workflow (203 seconds total) reveals:
+
+| Category | Time | % of Total | Notes |
+| --- | --- | --- | --- |
+| **Raw LLM API Time** | 43s | 21.0% | Actual `generateText()` call duration |
+| **LLM Step Overhead** | 16s | 7.8% | Workflow overhead for LLM calls |
+| **Persistence** | 18s | 9.1% | Database write operations |
+| **Tool Execution** | 4s | 2.1% | Actual tool work |
+| **Step Wall Clock** | 38s | 18.6% | Total measured step time |
+| **Inter-iteration Gaps** | 12s | 6.1% | Workpool queue time between iterations |
+| **Unaccounted** | 45s | 22.0% | Time not attributed to measured categories |
+| **Unmeasured** | 31s | 15.4% | Gap between total time and sum of measurements |
+
+**Key insight**: ~37% of workflow time (unaccounted + unmeasured) is not captured in typical
+timing instrumentation. This comes from:
+
+1. **Unmeasured step.run*() calls**: Cancellation checks, idempotency queries (~2-4s/iteration)
+2. **Journal load time**: Grows O(N), not typically instrumented (~50-200ms/iteration)
+3. **Message/state reconstruction**: Rebuilding conversation history from journal
+4. **Workpool loop coordination**: Segment-based scheduling overhead
+
+### Step Count and Workflow Invocation Correlation
+
+**Key relationship**: `totalSteps ≈ totalWorkflowInvocations` (minus batched parallel steps)
+
+For a typical single-tool-per-iteration workflow:
+- **7-10 steps per iteration** (observed average: 7.5)
+- Steps per iteration include:
+  1. `getExperimentRunStatus` - Cancellation check
+  2. `decideNextStep` - LLM call
+  3. `persistAssistantTurn` - Save assistant message
+  4. `getToolResult` - Idempotency check
+  5. `executeToolCall` - Tool execution
+  6. `getToolResult` - Fetch result for timing
+  7. `logIterationTiming` - Persist timing event
+
+**Total invocations** = (steps_per_iteration × iterations) - batched_steps
+
+For a 9-iteration workflow with 60 total steps: 60 steps / 9 iterations = 6.7 steps/iteration
+
+**Why this matters for overhead**:
+- Each NEW step causes a workflow handler re-invocation
+- Parallel steps (via `Promise.all`) share a single re-invocation
+- More steps = more journal replays = more accumulated overhead
+
+### Inter-Iteration Gap Variability
+
+**Typical range**: 1.2-1.5s (median ~1.2s)
+**Outlier range**: Up to 6s (observed after complex tools)
+**Average variance**: 1.2s to 3.5s depending on tool complexity
+
+**Factors affecting gap variability**:
+
+1. **Tool complexity**: Simple queries → ~1.2s, Complex multi-step tools → ~3-6s
+2. **Payload size**: Large tool results take longer to serialize through workpool
+3. **Database load**: Concurrent workflows competing for DB resources
+4. **Workpool segment timing**: 100ms granularity can add up to 100ms jitter
+
+**Observed pattern** (DeepSeek run):
+- After `stock_prices_historical`: ~1.1s gap
+- After `technical_indicators`: ~0.7s gap
+- After `llm_filtered_web_search`: **~6s gap** (scheduler fallback)
+
+The ~6s gaps occur specifically after `llm_filtered_web_search` because this tool involves
+multiple LLM + API calls and takes longer to complete, potentially causing the DB subscription
+wake-up to be missed.
+
 * * *
 
 ## Configuration Options
@@ -476,6 +545,37 @@ For high-frequency, short-duration operations where durability isn't critical:
 2. **Workpool without workflow**: Just use workpool for rate limiting
 3. **Inline action calls**: For operations that can complete in < 10 minutes
 
+### 7. AI SDK Loop Exit Behavior with Workflow Tools
+
+**Key Issue**: When using Vercel AI SDK's `generateText` with workflow tools, the loop
+exits after EVERY tool call because workflow tools lack an `execute` stub.
+
+**Root cause** (from AI SDK source):
+```typescript
+// ai/packages/ai/src/generate-text/execute-tool-call.ts:35-37
+if (tool?.execute == null) {
+  return undefined;  // ← Workflow tools hit this, causing no output
+}
+
+// ai/packages/ai/src/generate-text/generate-text.ts:822-831
+} while (
+  ((clientToolCalls.length > 0 &&
+    clientToolOutputs.length === clientToolCalls.length) ||  // ← Fails when outputs = 0
+    pendingDeferredToolCalls.size > 0) &&
+  !(await isStopConditionMet({ stopConditions, steps }))
+);
+```
+
+**Implications**:
+- Each tool call becomes a separate iteration
+- No tool batching (even if LLM requests multiple tools)
+- Iteration count = number of tool calls (not number of LLM decisions)
+
+**Potential optimization** (breaks durability):
+- Add execute stubs to workflow tools
+- Allow AI SDK to batch tool calls
+- Trade-off: Crash during tool batch loses all results in that batch
+
 * * *
 
 ## Open Research Questions
@@ -547,11 +647,40 @@ when you can tolerate restarts; choose workflow mode when completion is critical
 
 ### Measuring Workflow Overhead Accurately
 
-**⚠️ Common measurement pitfalls** (from arena project):
+**⚠️ Common measurement pitfalls** (documented from arena project debugging):
 
 1. **Wrong timestamp source**: Use precise start/end timestamps, not event timestamps
-2. **Multi-workflow interference**: Measure single workflows to avoid cross-contamination
-3. **Excluding LLM time**: Capture iteration start BEFORE the LLM call, not after
+   ```typescript
+   // BAD: Using event.timestamp from DB
+   const gap = events[i+1].timestamp - events[i].timestamp;
+
+   // GOOD: Using captured timestamps in event metadata
+   const gap = events[i+1].metadata.iterationStartTimestamp - events[i].metadata.iterationEndTimestamp;
+   ```
+
+2. **Multi-workflow interference**: When measuring gaps across parallel workflows, iterations
+   from different workflows get interleaved, producing artificially large gaps
+   ```
+   // BAD measurement:
+   Workflow A iter 1 → Workflow B iter 1 → gap appears as 16s
+
+   // GOOD measurement:
+   Single workflow run, gaps are ~1.2s
+   ```
+
+3. **Excluding LLM time**: A common bug is capturing iteration start AFTER the LLM call
+   ```typescript
+   // BAD: iterationStartTime set AFTER LLM call
+   const llmResult = await step.runAction(decideNextStep, args);
+   const iterationStartTime = Date.now();  // Wrong! LLM time excluded
+
+   // GOOD: iterationStartTimestamp set BEFORE LLM call
+   const iterationStartTimestamp = Date.now();  // Correct
+   const llmResult = await step.runAction(decideNextStep, args);
+   ```
+
+4. **Conflating different overhead types**: Inter-iteration gap (~1.2s) is NOT the same as
+   total infrastructure overhead (~79%). The gap is just one component.
 
 **Recommended measurement approach**:
 ```typescript
@@ -692,3 +821,27 @@ The scheduler itself adds minimal latency because:
 - Multiple mutations in the workflow/workpool coordination
 - Journal replay on each workflow handler invocation
 - Workpool main loop processing (segment-based, 100ms granularity)
+
+### Why ~6s Gaps Occur After Complex Tools
+
+**Observed pattern**: After `llm_filtered_web_search` or other complex multi-step tools,
+inter-iteration gaps can jump from ~1.2s to ~6s.
+
+**Root cause analysis** (requires further investigation - see cvx-pznt):
+
+1. **Long-running tools hypothesis**: Complex tools that involve multiple LLM calls and API
+   requests take longer to complete. During this extended execution:
+   - The workpool's internal state may not be updated frequently
+   - DB subscription invalidations might be missed
+   - The scheduler falls back to 5s polling
+
+2. **Workpool segment boundary hypothesis**: The workpool operates on 100ms segments.
+   If a completion event arrives just after a segment boundary was processed, it must
+   wait for the next loop iteration.
+
+3. **Concurrent workflow contention hypothesis**: Multiple workflows competing for the
+   same workpool resources may cause delays.
+
+**Testing recommendation**: Use the [workflow-testing harness](../../../experiments/workflow-testing/)
+to reproduce this pattern with controlled tool durations and measure the correlation
+between tool execution time and subsequent gap length.
