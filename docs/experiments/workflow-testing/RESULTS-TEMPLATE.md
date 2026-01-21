@@ -7,6 +7,40 @@
 **Environment**: Local Convex backend (http://127.0.0.1:3210)
 **Test Framework**: Vitest
 
+## Pre-Flight Checklist
+
+Before running tests, verify:
+
+- [ ] Node.js 18+ installed (`node --version`)
+- [ ] Dependencies installed (`npm install`)
+- [ ] Terminal 1: Convex dev server running (`npm run dev`)
+- [ ] Wait for "Convex functions ready!" message
+- [ ] Terminal 2: Test environment ready
+
+## Test Execution Commands
+
+```bash
+# Run all tests (recommended first run)
+npm test 2>&1 | tee test-output.log
+
+# Or run individual test suites:
+npm run test:scheduler  # cvx-fcqi: 6s gaps (~5 min)
+npm run test:payload    # cvx-g6ac, cvx-vjh4: payload overhead (~3 min)
+npm run test:variance   # cvx-2t3o: P95 outliers (~10 min)
+npm run test:journal    # Journal scaling (~3 min)
+```
+
+## Data Collection Notes
+
+After each test run, copy relevant output into sections below.
+Focus on:
+- Statistical summaries (mean, median, P95, P99)
+- Correlation coefficients (R²)
+- Gap measurements (especially > 5s)
+- Accountability percentages
+
+---
+
 ## Executive Summary
 
 | Metric | Value | Status |
