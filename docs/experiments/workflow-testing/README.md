@@ -135,6 +135,67 @@ This creates `RESULTS.md` with:
 - Graphs (if enabled)
 - Recommendations for documentation updates
 
+## Testing Approaches
+
+### Integration Testing (This Harness)
+
+This test harness uses **live integration testing** with `ConvexHttpClient`:
+
+```typescript
+const client = new ConvexHttpClient(CONVEX_URL);
+const workflowId = await client.mutation(api.testWorkflows.startWorkflow, args);
+// Poll for completion
+const status = await client.query(api.testWorkflows.getWorkflowStatus, { workflowId });
+```
+
+**Advantages:**
+- Tests real workflow/workpool behavior in actual Convex environment
+- Measures real timing characteristics (overhead, gaps, latency)
+- Catches production-like issues
+
+**Disadvantages:**
+- Slower (real time delays)
+- Requires running Convex dev server
+- Non-deterministic timing
+
+### Unit Testing (Official Example Pattern)
+
+The official `attic/workflow/workflow/example/` uses `initConvexTest()` with **fake timers**:
+
+```typescript
+import { initConvexTest } from "./setup.test";
+import { vi } from "vitest";
+
+beforeEach(async () => {
+  vi.useFakeTimers();
+  t = await setupTest();
+});
+
+afterEach(async () => {
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  vi.useRealTimers();
+});
+```
+
+**Advantages:**
+- Fast (no real delays)
+- Deterministic
+- Good for logic testing
+
+**Disadvantages:**
+- Doesn't measure real timing
+- May miss production-specific issues
+- Requires careful timer management
+
+### Which to Use?
+
+| Use Case | Recommended Approach |
+|----------|---------------------|
+| Performance measurement | Integration (this harness) |
+| Logic correctness | Unit tests with fake timers |
+| Regression testing | Unit tests |
+| Issue reproduction | Integration tests |
+
 ## Related Documentation
 
 - [Workflow Architecture Research](../../project/research/current/research-convex-durable-workflows-architecture.md)
