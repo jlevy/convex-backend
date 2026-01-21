@@ -657,15 +657,38 @@ if (tool?.execute == null) {
    latency for critical steps?
 
 6. **Direct Mutation Calls vs Scheduler** (cvx-387z): Could some `ctx.scheduler.runAfter(0, ...)`
-   calls be replaced with `ctx.runMutation()` to reduce scheduler hops? For example:
-   ```typescript
-   // Current (adds scheduler latency):
-   await ctx.scheduler.runAfter(0, internal.complete.complete, {...});
+   calls be replaced with `ctx.runMutation()` to reduce scheduler hops?
 
-   // Potential (no scheduler hop, but longer transaction):
-   await ctx.runMutation(internal.complete.complete, {...});
+   **Current Architecture (5 scheduler hops per step):**
    ```
-   Trade-off: Longer transaction times vs reduced scheduler latency. Needs benchmarking.
+   HOP 1: handler → kickMainLoop() → scheduler.runAt() [kick.ts:68]
+   HOP 2: loop.main → scheduler.runAfter(0, worker) [loop.ts:567-569]
+   HOP 3: worker → scheduler.runAfter(0, complete) [worker.ts:31, 69]
+   HOP 4: complete → pool.onComplete → kickMainLoop() [pool.ts:183-184]
+   HOP 5: loop.main → scheduler.runAfter(0, handler) [loop.ts:567-569]
+   ```
+
+   **Optimization Candidates:**
+   | Hop | Current | Could Replace With | Trade-off |
+   |-----|---------|-------------------|-----------|
+   | 3 | `scheduler.runAfter(0, complete)` | `ctx.runMutation(complete)` | Worker transaction longer, but saves ~200-500ms |
+   | 4 | `kickMainLoop() → scheduler.runAt()` | `ctx.runMutation(loop.main)` | Pool transaction longer, saves scheduler latency |
+
+   **Theoretical Savings:**
+   - Current: 5 hops × 200-500ms/hop = 1000-2500ms per step
+   - Optimized (2 fewer hops): 3 hops × 200-500ms/hop = 600-1500ms per step
+   - **Potential savings: 400-1000ms per step (16-40% reduction)**
+
+   **Trade-offs:**
+   1. **Longer Transaction Times**: `ctx.runMutation()` executes within the calling
+      transaction, potentially increasing transaction duration and conflict risk.
+   2. **Reduced Isolation**: Errors in the called mutation would roll back the caller.
+   3. **OCC Conflicts**: Longer transactions increase optimistic concurrency control
+      conflict probability.
+
+   **Recommendation:** Benchmark both approaches. If step completion is reliably fast
+   (<50ms), `ctx.runMutation()` may be preferable. If completion involves DB writes
+   that could conflict, scheduler isolation is safer.
 
 7. **Workpool Bypass for Trivial Steps**: For steps that execute quickly (simple queries,
    mutations), the workflow could execute them inline rather than through the workpool,
@@ -676,11 +699,12 @@ if (tool?.execute == null) {
 | Bead ID | Priority | Issue | Status |
 | --- | --- | --- | --- |
 | ~~cvx-5kc4~~ | ~~P1~~ | ~~Investigate 37% unaccounted/unmeasured time~~ | ✅ ANSWERED: Deep instrumentation achieved 91.9% accountability |
-| cvx-fcqi | P1 | DB subscription wake-up failure after complex tools (6s gaps) | Open - needs long-running step tests |
-| cvx-g6ac | P2 | Verify large payload overhead claim | Open - needs payload size variance tests |
+| cvx-fcqi | P1 | DB subscription wake-up failure after complex tools (6s gaps) | Test ready: `scheduler-wakeup.test.ts` |
+| cvx-g6ac | P2 | Verify large payload overhead claim | Test ready: `payload-overhead.test.ts` |
 | ~~cvx-1l22~~ | ~~P2~~ | ~~Add test case for `llm_filtered_web_search` pattern~~ | ✅ DONE: `external-engineer-issues.test.ts` |
-| cvx-2t3o | P2 | Step overhead P95 outliers (5.8s vs 1.2s typical) | Open - needs variance analysis |
-| cvx-vjh4 | P2 | step.runQuery latency bug - full result through workpool | Open - needs query vs action comparison |
+| cvx-2t3o | P2 | Step overhead P95 outliers (5.8s vs 1.2s typical) | Test ready: `variance-analysis.test.ts` |
+| cvx-vjh4 | P2 | step.runQuery latency bug - full result through workpool | Test ready: `payload-overhead.test.ts` comparison |
+| cvx-387z | P3 | ctx.runMutation optimization potential | Research complete - see Open Research Questions |
 | ~~cvx-d3nl~~ | ~~P2~~ | ~~Investigate journal load time scaling~~ | ✅ ANSWERED: Only 1.4% of time - NOT main issue |
 | ~~cvx-ox3h~~ | ~~P2~~ | ~~Investigate workpool coordination overhead~~ | ✅ ANSWERED: 56.3% = call(36%) + return(20.3%) |
 | ~~cvx-w9ev~~ | ~~P2~~ | ~~Investigate step completion handling~~ | ✅ ANSWERED: 20.3% step return overhead |
@@ -718,6 +742,14 @@ The fully-instrumented workflow (cvx-88z7) answered multiple investigation quest
      - Both store results in journal (same serialization cost)
      - The difference should be execution time, not workpool overhead
    - If runQuery shows higher overhead, it would indicate a bug in the workflow library
+
+5. **cvx-387z: ctx.runMutation Optimization** - Research complete
+   - **Analysis**: See "Direct Mutation Calls vs Scheduler" in Open Research Questions
+   - **Candidates**: Hops 3 (worker→complete) and 4 (complete→kick) could potentially use `ctx.runMutation()`
+   - **Potential Savings**: 400-1000ms per step (16-40% reduction)
+   - **Trade-offs**: Longer transactions, reduced isolation, OCC conflict risk
+   - **Recommendation**: Benchmark on real workload before implementing
+   - **Note**: This would require changes to workflow/workpool component source, not testable in harness
 
 **Test Infrastructure Added:**
 - `variablePayloadActionWorkflow`: Uses `step.runAction` for direct comparison
