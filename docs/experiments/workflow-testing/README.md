@@ -27,17 +27,47 @@ latency and cloud variability.
 
 ### Local Setup
 
+**First-Time Setup** (generates Convex types and initializes local backend):
+
 ```bash
-# 1. Install dependencies
+# 1. Navigate to the testing directory
 cd docs/experiments/workflow-testing
-pnpm install
 
-# 2. Start local Convex backend (runs on http://127.0.0.1:3210)
-pnpm dev
+# 2. Install dependencies
+npm install
 
-# 3. In another terminal, run tests against local backend
-CONVEX_URL=http://127.0.0.1:3210 pnpm test
+# 3. Start local Convex backend (MUST run first to generate types)
+# This creates convex/_generated/ files required by tests
+npx convex dev
+
+# When prompted, select:
+# - "create a new project" or use existing local project
+# - This will generate the _generated/ directory with API types
 ```
+
+**Running Tests** (after first-time setup):
+
+```bash
+# Terminal 1: Start Convex dev server
+npm run dev
+
+# Terminal 2: Run tests (wait for "Convex server ready" message first)
+npm test
+
+# Or run specific test suites:
+npm run test:scheduler  # cvx-fcqi: 6s gaps
+npm run test:payload    # cvx-g6ac, cvx-vjh4: payload overhead
+npm run test:variance   # cvx-2t3o: P95 outliers
+npm run test:journal    # Journal scaling tests
+```
+
+**Troubleshooting**:
+
+| Issue | Solution |
+|-------|----------|
+| "Cannot find module '_generated/api'" | Run `npx convex dev` first to generate types |
+| "Connection refused" | Ensure `npm run dev` is running in another terminal |
+| Tests timeout | Increase `testTimeout` in vitest.config.ts (default: 120s) |
 
 The local Convex development server automatically:
 - Creates an isolated local database
