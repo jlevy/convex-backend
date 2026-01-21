@@ -6,7 +6,7 @@
  */
 
 import { v } from "convex/values";
-import { internalMutation, mutation } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 
 /**
  * Creates a new test run record.
@@ -666,5 +666,82 @@ export const clearTestData = mutation({
       `${counters} counters, ${timingEvents} timing events, ${timingAnalysis} timing analyses`
     );
     return { testRuns, measurements, counters, timingEvents, timingAnalysis };
+  },
+});
+
+// ============================================================================
+// onComplete Handler Pattern (cvx-ndxf)
+// Demonstrates the official workflow example pattern for handling completions
+// ============================================================================
+
+/**
+ * onComplete handler for workflows.
+ *
+ * This is called automatically when a workflow completes if specified in workflow.start().
+ * The handler receives the workflow result and any custom context passed during start.
+ *
+ * Usage:
+ * ```typescript
+ * await workflow.start(ctx, internal.testWorkflows.someWorkflow, args, {
+ *   onComplete: internal.testMutations.handleWorkflowComplete,
+ *   context: { testRunId: "...", customData: "..." },
+ * });
+ * ```
+ *
+ * Related bead: cvx-ndxf
+ */
+export const handleWorkflowComplete = internalMutation({
+  args: {
+    workflowId: v.string(),
+    result: v.optional(v.any()),
+    context: v.optional(v.any()),
+  },
+  returns: v.null(),
+  handler: async (ctx, { workflowId, result, context }) => {
+    console.log(`[handleWorkflowComplete] workflow=${workflowId} completed`);
+    console.log(`[handleWorkflowComplete] result=${JSON.stringify(result)}`);
+    console.log(`[handleWorkflowComplete] context=${JSON.stringify(context)}`);
+
+    // Record the completion event
+    await ctx.db.insert("workflowCompletions", {
+      workflowId,
+      completedAt: Date.now(),
+      result,
+      context,
+    });
+
+    // If context contains a testRunId, we could update the test run status
+    if (context?.testRunId) {
+      console.log(`[handleWorkflowComplete] would update testRun ${context.testRunId}`);
+    }
+
+    return null;
+  },
+});
+
+/**
+ * Query to get workflow completion records.
+ */
+export const getWorkflowCompletion = query({
+  args: {
+    workflowId: v.string(),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      _id: v.id("workflowCompletions"),
+      _creationTime: v.number(),
+      workflowId: v.string(),
+      completedAt: v.number(),
+      result: v.optional(v.any()),
+      context: v.optional(v.any()),
+      error: v.optional(v.string()),
+    })
+  ),
+  handler: async (ctx, { workflowId }) => {
+    return await ctx.db
+      .query("workflowCompletions")
+      .withIndex("by_workflow", (q) => q.eq("workflowId", workflowId))
+      .first();
   },
 });

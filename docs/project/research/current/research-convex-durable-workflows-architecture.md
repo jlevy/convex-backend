@@ -699,10 +699,10 @@ New actions added to support these tests:
 
 | Bead ID | Priority | Task |
 | --- | --- | --- |
-| cvx-qmwt | P2 | Cross-reference workflow-testing harness against attic/workflow examples |
-| cvx-ndxf | P3 | Add onComplete handler pattern to workflow-testing harness |
-| cvx-5i6y | P3 | Add workflow event testing (awaitEvent/sendEvent) to testing harness |
-| cvx-h63b | P3 | Document unit test vs integration test approaches |
+| ~~cvx-qmwt~~ | ~~P2~~ | ~~Cross-reference workflow-testing harness against attic/workflow examples~~ | ✅ DONE: See section below |
+| ~~cvx-ndxf~~ | ~~P3~~ | ~~Add onComplete handler pattern to workflow-testing harness~~ | ✅ DONE: `startVariableDurationWithOnComplete`, `handleWorkflowComplete` |
+| ~~cvx-5i6y~~ | ~~P3~~ | ~~Add workflow event testing (awaitEvent/sendEvent) to testing harness~~ | ✅ DONE: `eventBasedWorkflow`, `sendApprovalEvent` |
+| ~~cvx-h63b~~ | ~~P3~~ | ~~Document unit test vs integration test approaches~~ | ✅ DONE: [README.md#testing-approaches](../../../experiments/workflow-testing/README.md#testing-approaches) |
 
 ### Workflow-Testing Harness Cross-Reference Analysis
 
@@ -715,18 +715,18 @@ Comparing `docs/experiments/workflow-testing/` against `attic/workflow/workflow/
 - Status polling via `workflow.status()`
 
 **Gaps identified (tracked as beads):**
-1. **Missing onComplete pattern** (cvx-ndxf): Official examples use `onComplete` callback
-   with context to handle workflow completion and cleanup. Useful for automatic result recording.
+1. ~~**Missing onComplete pattern** (cvx-ndxf)~~: ✅ DONE - Added `startVariableDurationWithOnComplete`
+   mutation and `handleWorkflowComplete` handler demonstrating this pattern.
 
 2. **No retry configuration**: Official example shows `workpoolOptions: { retryActionsByDefault: true }`
    and per-step retry overrides. Testing harness doesn't configure retries.
 
-3. **Missing event tests** (cvx-5i6y): Official example shows `ctx.awaitEvent()` and
-   `workflow.sendEvent()` for human-in-the-loop patterns. Not tested in harness.
+3. ~~**Missing event tests** (cvx-5i6y)~~: ✅ DONE - Added `eventBasedWorkflow` with
+   `step.waitForEvent()` and `sendApprovalEvent` mutation demonstrating the event pattern.
 
-4. **Test approach documentation** (cvx-h63b): Official uses `initConvexTest()` with fake
-   timers for unit tests. Our harness uses live `ConvexHttpClient` for integration tests.
-   Both approaches are valid for different purposes - needs documentation.
+4. ~~**Test approach documentation** (cvx-h63b)~~: ✅ DONE - See
+   [README.md Testing Approaches](../../../experiments/workflow-testing/README.md#testing-approaches)
+   for comprehensive comparison of unit tests (fake timers) vs integration tests (live Convex).
 
 **Official example patterns to adopt:**
 ```typescript

@@ -801,3 +801,198 @@ export const getWorkflowStatus = query({
     return status;
   },
 });
+
+// ============================================================================
+// onComplete Handler Pattern Example (cvx-ndxf)
+// Demonstrates using the onComplete callback from official workflow examples
+// ============================================================================
+
+/**
+ * Starts a variable duration workflow WITH onComplete callback.
+ *
+ * This demonstrates the official pattern for handling workflow completion:
+ * - The onComplete handler is called automatically when workflow finishes
+ * - Custom context can be passed through and retrieved in the handler
+ * - Useful for automatic result recording, cleanup, or triggering follow-up actions
+ *
+ * Related bead: cvx-ndxf
+ *
+ * @example
+ * ```typescript
+ * const workflowId = await client.mutation(
+ *   api.testWorkflows.startVariableDurationWithOnComplete,
+ *   {
+ *     durations: [100, 200, 300],
+ *     testRunId: "test-123",
+ *   }
+ * );
+ * // Later, check completion record:
+ * const completion = await client.query(
+ *   api.testMutations.getWorkflowCompletion,
+ *   { workflowId }
+ * );
+ * ```
+ */
+export const startVariableDurationWithOnComplete = mutation({
+  args: {
+    durations: v.array(v.number()),
+    testRunId: v.optional(v.string()),
+  },
+  returns: v.string(),
+  handler: async (ctx, args): Promise<string> => {
+    const id: WorkflowId = await workflow.start(
+      ctx,
+      internal.testWorkflows.variableDurationWorkflow,
+      { durations: args.durations },
+      {
+        // onComplete callback - called automatically when workflow finishes
+        onComplete: internal.testMutations.handleWorkflowComplete,
+        // Custom context - passed through to onComplete handler
+        context: {
+          testRunId: args.testRunId ?? `auto-${Date.now()}`,
+          startedAt: Date.now(),
+          description: "Variable duration workflow with onComplete pattern",
+        },
+      }
+    );
+    console.log(`[startVariableDurationWithOnComplete] started workflow ${id} with onComplete`);
+    return id;
+  },
+});
+
+// ============================================================================
+// Event-Based Workflow Pattern Example (cvx-5i6y)
+// Demonstrates awaitEvent/sendEvent for human-in-the-loop or external signals
+// ============================================================================
+
+/**
+ * Event-Based Workflow
+ *
+ * Demonstrates the event coordination pattern from official workflow examples:
+ * - Workflow pauses at `step.waitForEvent()` until event is received
+ * - External code calls `workflow.sendEvent()` to resume the workflow
+ * - Useful for human-in-the-loop, approval workflows, or external integrations
+ *
+ * Related bead: cvx-5i6y
+ */
+export const eventBasedWorkflow = workflow.define({
+  args: {
+    initialValue: v.number(),
+  },
+  returns: v.object({
+    initialValue: v.number(),
+    approvalReceived: v.boolean(),
+    approvalValue: v.optional(v.any()),
+    finalValue: v.number(),
+    waitDurationMs: v.number(),
+  }),
+  handler: async (step, args) => {
+    console.log(`[eventBasedWorkflow] starting with initialValue=${args.initialValue}`);
+
+    // Do some initial work
+    const doubled = args.initialValue * 2;
+    console.log(`[eventBasedWorkflow] doubled value to ${doubled}`);
+
+    // Wait for external approval event
+    // This pauses the workflow until workflow.sendEvent() is called
+    const waitStart = Date.now();
+    console.log(`[eventBasedWorkflow] waiting for 'userApproval' event...`);
+
+    const approvalEvent = await step.waitForEvent("userApproval", {
+      // Timeout after 60 seconds (optional)
+      timeoutMs: 60000,
+    });
+
+    const waitEnd = Date.now();
+    const waitDurationMs = waitEnd - waitStart;
+
+    console.log(`[eventBasedWorkflow] received approval event after ${waitDurationMs}ms`);
+    console.log(`[eventBasedWorkflow] approval value: ${JSON.stringify(approvalEvent)}`);
+
+    // Continue with result based on approval
+    const finalValue = approvalEvent?.approved ? doubled : args.initialValue;
+
+    return {
+      initialValue: args.initialValue,
+      approvalReceived: !!approvalEvent,
+      approvalValue: approvalEvent,
+      finalValue,
+      waitDurationMs,
+    };
+  },
+});
+
+/**
+ * Starts an event-based workflow.
+ *
+ * After starting, the workflow will pause waiting for the 'userApproval' event.
+ * Use `sendApprovalEvent` to resume it.
+ *
+ * Related bead: cvx-5i6y
+ */
+export const startEventBasedWorkflow = mutation({
+  args: {
+    initialValue: v.number(),
+  },
+  returns: v.string(),
+  handler: async (ctx, args): Promise<string> => {
+    const id: WorkflowId = await workflow.start(
+      ctx,
+      internal.testWorkflows.eventBasedWorkflow,
+      args
+    );
+    console.log(`[startEventBasedWorkflow] started workflow ${id}, waiting for userApproval event`);
+    return id;
+  },
+});
+
+/**
+ * Sends an approval event to a waiting workflow.
+ *
+ * This resumes a workflow that's paused at `step.waitForEvent("userApproval")`.
+ *
+ * Related bead: cvx-5i6y
+ *
+ * @example
+ * ```typescript
+ * // Start workflow (will pause waiting for approval)
+ * const workflowId = await client.mutation(
+ *   api.testWorkflows.startEventBasedWorkflow,
+ *   { initialValue: 10 }
+ * );
+ *
+ * // Later, send approval to resume
+ * await client.mutation(
+ *   api.testWorkflows.sendApprovalEvent,
+ *   { workflowId, approved: true }
+ * );
+ *
+ * // Check result
+ * const status = await client.query(
+ *   api.testWorkflows.getWorkflowStatus,
+ *   { workflowId }
+ * );
+ * ```
+ */
+export const sendApprovalEvent = mutation({
+  args: {
+    workflowId: v.string(),
+    approved: v.boolean(),
+    reason: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    await workflow.sendEvent(ctx, args.workflowId as WorkflowId, {
+      name: "userApproval",
+      value: {
+        approved: args.approved,
+        reason: args.reason,
+        approvedAt: Date.now(),
+      },
+    });
+    console.log(
+      `[sendApprovalEvent] sent userApproval event to ${args.workflowId}: approved=${args.approved}`
+    );
+    return null;
+  },
+});

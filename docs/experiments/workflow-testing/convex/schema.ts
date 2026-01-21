@@ -100,4 +100,20 @@ export default defineSchema({
     })),
     completedAt: v.number(),
   }).index("by_workflow", ["workflowId"]),
+
+  /**
+   * Workflow completion events from onComplete callbacks.
+   *
+   * Demonstrates the onComplete handler pattern from official examples.
+   * Each entry records when a workflow completed via its onComplete callback.
+   *
+   * Related bead: cvx-ndxf
+   */
+  workflowCompletions: defineTable({
+    workflowId: v.string(),
+    completedAt: v.number(),
+    result: v.optional(v.any()),
+    context: v.optional(v.any()),  // Custom context passed via workflow.start()
+    error: v.optional(v.string()),
+  }).index("by_workflow", ["workflowId"]),
 });
