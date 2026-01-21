@@ -7,6 +7,7 @@
 
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 /**
  * Sleeps for a specified duration.
@@ -240,6 +241,83 @@ export const simulateSimpleTool = internalAction({
         start,
         end,
       },
+    };
+  },
+});
+
+// ============================================================================
+// Instrumented Actions for Full Timing Analysis
+// Related beads: cvx-r7di, cvx-c6rk, cvx-yoap, cvx-md6f
+// ============================================================================
+
+/**
+ * An instrumented action that logs precise timing events.
+ *
+ * This action:
+ * 1. Logs action_start event to database
+ * 2. Performs work (sleep for specified duration)
+ * 3. Logs action_end event to database
+ * 4. Returns timestamps for verification
+ *
+ * The timestamps are captured at the action level (inside the action),
+ * which allows us to measure workpool overhead by comparing:
+ * - pre_step timestamp (in handler, before step.runAction)
+ * - action_start timestamp (in action, first thing)
+ * - action_end timestamp (in action, last thing)
+ * - post_step timestamp (in handler, after step.runAction returns)
+ */
+export const instrumentedAction = internalAction({
+  args: {
+    workflowId: v.string(),
+    invocationNumber: v.number(),
+    stepIndex: v.number(),
+    durationMs: v.number(),
+    payloadSizeKb: v.optional(v.number()),
+  },
+  returns: v.object({
+    actionStartTs: v.number(),
+    actionEndTs: v.number(),
+    actualDurationMs: v.number(),
+    resultSizeBytes: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const actionStartTs = Date.now();
+
+    // Log action_start event
+    await ctx.runMutation(internal.testMutations.logTimingEvent, {
+      workflowId: args.workflowId,
+      invocationNumber: args.invocationNumber,
+      stepIndex: args.stepIndex,
+      eventType: "action_start",
+      timestamp: actionStartTs,
+      metadata: { durationMs: args.durationMs, payloadSizeKb: args.payloadSizeKb ?? 0 },
+    });
+
+    // Perform work
+    await new Promise((resolve) => setTimeout(resolve, args.durationMs));
+
+    // Generate result payload if requested
+    const payloadSizeKb = args.payloadSizeKb ?? 1;
+    const resultSizeBytes = payloadSizeKb * 1024;
+    const _payload = "X".repeat(resultSizeBytes);
+
+    const actionEndTs = Date.now();
+
+    // Log action_end event
+    await ctx.runMutation(internal.testMutations.logTimingEvent, {
+      workflowId: args.workflowId,
+      invocationNumber: args.invocationNumber,
+      stepIndex: args.stepIndex,
+      eventType: "action_end",
+      timestamp: actionEndTs,
+      metadata: { actualDurationMs: actionEndTs - actionStartTs, resultSizeBytes },
+    });
+
+    return {
+      actionStartTs,
+      actionEndTs,
+      actualDurationMs: actionEndTs - actionStartTs,
+      resultSizeBytes,
     };
   },
 });

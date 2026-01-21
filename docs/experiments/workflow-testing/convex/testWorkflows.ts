@@ -481,8 +481,188 @@ export const minimalOverheadWorkflow = workflow.define({
 });
 
 // ============================================================================
+// Fully-Instrumented Workflow for Deep Timing Analysis
+// Related beads: cvx-r7di, cvx-c6rk, cvx-yoap, cvx-md6f
+// ============================================================================
+
+/**
+ * Fully-Instrumented Workflow
+ *
+ * This workflow captures timing events at every possible point to achieve
+ * 100% accountability of workflow execution time.
+ *
+ * Timing points captured:
+ * 1. handler_start - When handler begins executing
+ * 2. pre_step - Just before calling step.runAction
+ * 3. action_start - Inside action, first thing (via instrumentedAction)
+ * 4. action_end - Inside action, last thing (via instrumentedAction)
+ * 5. post_step - Just after step.runAction returns
+ * 6. handler_end - When handler completes
+ *
+ * The workflow stores its ID in a closure so the action can log events
+ * associated with the same workflow.
+ *
+ * After workflow completes, call analyzeTimingEvents to compute breakdown.
+ */
+// Define return type for fullyInstrumentedWorkflow to avoid implicit any
+type InstrumentedWorkflowResult = {
+  workflowId: string;
+  stepCount: number;
+  invocationCount: number;
+  firstHandlerStartTs: number;
+  lastHandlerEndTs: number;
+  totalDurationMs: number;
+};
+
+export const fullyInstrumentedWorkflow = workflow.define({
+  args: {
+    workflowId: v.string(),  // Passed in so we can correlate events
+    stepCount: v.number(),
+    stepDurationMs: v.number(),
+    stepPayloadSizeKb: v.optional(v.number()),
+  },
+  returns: v.object({
+    workflowId: v.string(),
+    stepCount: v.number(),
+    invocationCount: v.number(),
+    firstHandlerStartTs: v.number(),
+    lastHandlerEndTs: v.number(),
+    totalDurationMs: v.number(),
+  }),
+  handler: async (step, args): Promise<InstrumentedWorkflowResult> => {
+    // Track invocation number for this handler call
+    // This increments each time the handler is invoked (replayed)
+    const invocationNumber: { step: number; value: number; timestamp: number } = await step.runMutation(
+      internal.testMutations.incrementCounter,
+      { workflowId: args.workflowId, step: -1 }
+    );
+
+    const handlerStartTs = Date.now();
+
+    // Log handler_start event
+    await step.runMutation(internal.testMutations.logTimingEvent, {
+      workflowId: args.workflowId,
+      invocationNumber: invocationNumber.value,
+      eventType: "handler_start",
+      timestamp: handlerStartTs,
+      metadata: { stepCount: args.stepCount },
+    });
+
+    console.log(
+      `[fullyInstrumentedWorkflow] handler invocation ${invocationNumber.value} ` +
+      `starting at ${handlerStartTs}, ${args.stepCount} steps`
+    );
+
+    // Run each step with full instrumentation
+    for (let i = 0; i < args.stepCount; i++) {
+      const preStepTs = Date.now();
+
+      // Log pre_step event
+      await step.runMutation(internal.testMutations.logTimingEvent, {
+        workflowId: args.workflowId,
+        invocationNumber: invocationNumber.value,
+        stepIndex: i,
+        eventType: "pre_step",
+        timestamp: preStepTs,
+        metadata: { stepIndex: i },
+      });
+
+      // Run the instrumented action (it logs action_start and action_end internally)
+      const actionResult = await step.runAction(internal.testActions.instrumentedAction, {
+        workflowId: args.workflowId,
+        invocationNumber: invocationNumber.value,
+        stepIndex: i,
+        durationMs: args.stepDurationMs,
+        payloadSizeKb: args.stepPayloadSizeKb,
+      });
+
+      const postStepTs = Date.now();
+
+      // Log post_step event
+      await step.runMutation(internal.testMutations.logTimingEvent, {
+        workflowId: args.workflowId,
+        invocationNumber: invocationNumber.value,
+        stepIndex: i,
+        eventType: "post_step",
+        timestamp: postStepTs,
+        metadata: {
+          stepIndex: i,
+          actionDurationMs: actionResult.actualDurationMs,
+          stepTotalMs: postStepTs - preStepTs,
+        },
+      });
+
+      console.log(
+        `[fullyInstrumentedWorkflow] step ${i} complete: ` +
+        `preStep=${preStepTs}, actionStart=${actionResult.actionStartTs}, ` +
+        `actionEnd=${actionResult.actionEndTs}, postStep=${postStepTs}`
+      );
+    }
+
+    const handlerEndTs = Date.now();
+
+    // Log handler_end event
+    await step.runMutation(internal.testMutations.logTimingEvent, {
+      workflowId: args.workflowId,
+      invocationNumber: invocationNumber.value,
+      eventType: "handler_end",
+      timestamp: handlerEndTs,
+      metadata: { handlerDurationMs: handlerEndTs - handlerStartTs },
+    });
+
+    // Return summary (only executed on final invocation)
+    return {
+      workflowId: args.workflowId,
+      stepCount: args.stepCount,
+      invocationCount: invocationNumber.value,
+      firstHandlerStartTs: handlerStartTs,  // This is the last invocation's start
+      lastHandlerEndTs: handlerEndTs,
+      totalDurationMs: handlerEndTs - handlerStartTs,
+    };
+  },
+});
+
+// ============================================================================
 // Workflow Start/Complete Handlers
 // ============================================================================
+
+/**
+ * Starts a fully-instrumented workflow and returns both workflow IDs.
+ *
+ * Returns an object with:
+ * - internalId: The internal workflow ID for status polling
+ * - correlationId: The correlation ID for timing event analysis
+ *
+ * Related beads: cvx-r7di, cvx-c6rk, cvx-yoap, cvx-md6f
+ */
+export const startFullyInstrumentedWorkflow = mutation({
+  args: {
+    stepCount: v.number(),
+    stepDurationMs: v.number(),
+    stepPayloadSizeKb: v.optional(v.number()),
+  },
+  returns: v.object({
+    internalId: v.string(),
+    correlationId: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    // Generate a unique workflow ID for event correlation
+    const correlationId = `instrumented-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const internalId: WorkflowId = await workflow.start(
+      ctx,
+      internal.testWorkflows.fullyInstrumentedWorkflow,
+      {
+        workflowId: correlationId,
+        stepCount: args.stepCount,
+        stepDurationMs: args.stepDurationMs,
+        stepPayloadSizeKb: args.stepPayloadSizeKb,
+      }
+    );
+    console.log(`[startFullyInstrumentedWorkflow] started workflow ${internalId} with correlationId ${correlationId}`);
+    return { internalId, correlationId };
+  },
+});
 
 /**
  * Starts a variable duration workflow and returns the workflow ID.

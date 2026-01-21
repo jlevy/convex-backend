@@ -228,3 +228,74 @@ export default defineConfig({
   },
 });
 ```
+
+## Research Findings
+
+### Fully-Instrumented Workflow Analysis (cvx-r7di)
+
+The fully-instrumented workflow test captures timing at every point to achieve near-100%
+accountability of workflow execution time:
+
+```
+============================================================
+FULL TIME ACCOUNTABILITY REPORT
+============================================================
+Configuration: 15 steps x 100ms, 10KB payload
+Total Duration: 69040ms
+Total Invocations: 1
+Accountability: 91.9%
+------------------------------------------------------------
+COMPONENT BREAKDOWN:
+------------------------------------------------------------
+Action Execution           1900ms    2.8%  Time actions actually ran
+Step Call Overhead        24842ms   36.0%  Workpool enqueue → action start
+Step Return Overhead      13986ms   20.3%  Action end → step return
+Inter-Step Overhead       21770ms   31.5%  Between steps in handler
+Handler Setup               967ms    1.4%  Journal replay + context
+Inter-Invocation              0ms    0.0%  Scheduler wake-up delay
+------------------------------------------------------------
+TOTAL MEASURED            63465ms   91.9%
+UNACCOUNTED                5575ms    8.1%
+============================================================
+```
+
+### Key Findings
+
+1. **91.9% Accountability** - Successfully accounted for almost all time (vs 48.4% in earlier tests without deep instrumentation)
+
+2. **Major Overhead Sources (ranked by impact):**
+   | Source | Percentage | Description |
+   |--------|------------|-------------|
+   | Step Call Overhead | 36.0% | Workpool enqueue + scheduling (pre_step → action_start) |
+   | Inter-Step Overhead | 31.5% | Time between steps within handler |
+   | Step Return Overhead | 20.3% | Workpool completion handling (action_end → post_step) |
+   | Unaccounted | 8.1% | Measurement gaps, JS event loop, etc. |
+   | Action Execution | 2.8% | Actual work performed |
+   | Handler Setup | 1.4% | Journal replay + context setup |
+
+3. **Overhead Asymmetry:**
+   - Per-step call overhead: ~1654ms
+   - Per-step return overhead: ~936ms
+   - **Ratio: 1.77x** - Step CALL is more expensive than step RETURN
+   - This suggests workpool enqueue/scheduling is more expensive than completion handling
+
+4. **Overhead Per Step: ~2,588ms** for a 100ms action (25x overhead!)
+
+5. **Journal Replay is NOT the main issue** - Only 1.4% of time is handler setup
+
+### Implications
+
+1. **Workpool optimization is critical** - 56.3% of time is workpool-related (call + return overhead)
+
+2. **Short actions suffer the most** - With 2,588ms overhead per step, actions under ~200ms are dominated by overhead
+
+3. **Batching steps would help** - Reducing the number of steps reduces overhead proportionally
+
+4. **Inter-step overhead is significant** - 31.5% suggests opportunity for optimization in handler execution flow
+
+### Related Beads
+
+- cvx-r7di: Create fully-instrumented workflow (P0) - COMPLETED
+- cvx-c6rk: Investigate journal load time scaling
+- cvx-yoap: Investigate workpool coordination overhead
+- cvx-md6f: Investigate step completion handling overhead
