@@ -214,6 +214,65 @@ Step Execution Flow:
 TOTAL OVERHEAD PER STEP: ~100-300ms (not counting actual step execution)
 ```
 
+### Root Cause: Scheduler Hops, Not Database Latency
+
+**Key insight**: The dominant source of workflow overhead is **Convex scheduler latency**, not
+database operations. Each `ctx.scheduler.runAfter(0, ...)` call adds platform latency (typically
+hundreds of milliseconds, up to 1-3 seconds under load).
+
+Each workflow step requires **5 scheduler hops**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ HOP 1: Workflow handler → kickMainLoop() → scheduler.runAt()    │
+│        Enqueues step to workpool, kicks main loop               │
+│        Source: kick.ts:68                                       │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ HOP 2: loop.main → beginWork() → scheduler.runAfter(0, worker)  │
+│        Main loop finds pending work, schedules actual execution │
+│        Source: loop.ts:567-569                                  │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ HOP 3: Worker executes → scheduler.runAfter(0, complete)        │
+│        Step executes, then schedules completion                 │
+│        Source: worker.ts:31, 69                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ HOP 4: complete.complete → pool.onComplete → kickMainLoop()     │
+│        Completion processed, re-enqueues workflow handler       │
+│        Source: pool.ts:183-184, kick.ts:68                      │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ HOP 5: loop.main → beginWork() → scheduler.runAfter(0, handler) │
+│        Main loop picks up workflow handler, schedules it        │
+│        Source: loop.ts:567-569                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Why this matters**: 5 hops × 200-500ms each = 1-2.5s minimum per step, regardless of how fast
+your actual step code runs. This explains why trivial operations still take seconds.
+
+### kick.ts Short-Circuit Optimization
+
+The workpool has a short-circuit optimization in `kick.ts:45-49`:
+
+```typescript
+if (runStatus.state.segment <= toSegment(Date.now() + SECOND)) {
+  console.debug(`[${source}] main is scheduled to run soon enough`);
+  return next;
+}
+```
+
+**Behavior**: If the main loop is already scheduled to run within 1 second, kicks are skipped.
+This reduces redundant scheduling but means work may wait up to 1 second before being picked up.
+
+**(Tracked: cvx-v5zc, cvx-dwge)**
+
 ### ⚠️ Important: Per-Step Overhead vs Inter-Iteration Gap
 
 **Per-step overhead** (~100-300ms): The database operation time shown above. This is the
@@ -596,6 +655,21 @@ if (tool?.execute == null) {
 
 5. **Priority Queues**: Could workpool support priority-based scheduling to reduce
    latency for critical steps?
+
+6. **Direct Mutation Calls vs Scheduler** (cvx-387z): Could some `ctx.scheduler.runAfter(0, ...)`
+   calls be replaced with `ctx.runMutation()` to reduce scheduler hops? For example:
+   ```typescript
+   // Current (adds scheduler latency):
+   await ctx.scheduler.runAfter(0, internal.complete.complete, {...});
+
+   // Potential (no scheduler hop, but longer transaction):
+   await ctx.runMutation(internal.complete.complete, {...});
+   ```
+   Trade-off: Longer transaction times vs reduced scheduler latency. Needs benchmarking.
+
+7. **Workpool Bypass for Trivial Steps**: For steps that execute quickly (simple queries,
+   mutations), the workflow could execute them inline rather than through the workpool,
+   eliminating 5 scheduler hops entirely.
 
 ### Active Investigations (Tracked Beads)
 
