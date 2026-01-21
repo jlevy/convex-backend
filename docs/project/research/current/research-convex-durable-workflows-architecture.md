@@ -293,7 +293,7 @@ In typical workflow timing measurements, some `step.run*()` calls are not instru
 | `step.runQuery(getStatus)` | Cancellation check | Before LLM call | ~100-300ms |
 | `step.runMutation(persist*)` | Save state | After tool execution | Measured |
 | `step.runQuery(getResult)` | Idempotency check | Before tool execution | ~100-300ms |
-| `step.runQuery(getResult)` | Timing/result fetch | After tool execution | **Variable** |
+| `step.runQuery(getResult)` | Timing/result fetch | After tool execution | **Variable** (Bug: cvx-w816, Outliers: cvx-vfxn) |
 
 **Large payload effect**: The timing/result query returns the full tool result. For tools
 returning large payloads (e.g., web search results, API responses), this query takes longer
@@ -307,7 +307,7 @@ because the entire result must be serialized through the workpool round-trip.
 The overhead varies with payload size due to serialization and DB write costs.
 
 **Mitigation**: Design step return values to be small (IDs, status flags). Store large
-results directly in the database and return only references.
+results directly in the database and return only references. **(Verification: cvx-6c37)**
 
 ### Detailed Overhead Breakdown (From Arena Project Analysis)
 
@@ -325,7 +325,7 @@ A comprehensive analysis of a 9-iteration workflow (203 seconds total) reveals:
 | **Unmeasured** | 31s | 15.4% | Gap between total time and sum of measurements |
 
 **Key insight**: ~37% of workflow time (unaccounted + unmeasured) is not captured in typical
-timing instrumentation. This comes from:
+timing instrumentation. **(Investigation: cvx-13wu)** This comes from:
 
 1. **Unmeasured step.run*() calls**: Cancellation checks, idempotency queries (~2-4s/iteration)
 2. **Journal load time**: Grows O(N), not typically instrumented (~50-200ms/iteration)
@@ -376,7 +376,7 @@ For a 9-iteration workflow with 60 total steps: 60 steps / 9 iterations = 6.7 st
 
 The ~6s gaps occur specifically after `llm_filtered_web_search` because this tool involves
 multiple LLM + API calls and takes longer to complete, potentially causing the DB subscription
-wake-up to be missed.
+wake-up to be missed. **(Investigation: cvx-pznt, Test case: cvx-v6tf)**
 
 * * *
 
@@ -580,6 +580,8 @@ if (tool?.execute == null) {
 
 ## Open Research Questions
 
+### Infrastructure Improvements
+
 1. **Batch Step Submission**: Could multiple steps be submitted in a single mutation
    to reduce coordination overhead?
 
@@ -594,6 +596,71 @@ if (tool?.execute == null) {
 
 5. **Priority Queues**: Could workpool support priority-based scheduling to reduce
    latency for critical steps?
+
+### Active Investigations (Tracked Beads)
+
+| Bead ID | Priority | Issue |
+| --- | --- | --- |
+| cvx-13wu | P1 | Investigate 37% unaccounted/unmeasured time in workflow runs |
+| cvx-pznt | P1 | DB subscription wake-up failure after complex tools (6s gaps) |
+| cvx-6c37 | P2 | Verify large payload overhead claim |
+| cvx-v6tf | P2 | Add test case for `llm_filtered_web_search` pattern |
+| cvx-vfxn | P2 | Step overhead P95 outliers (5.8s vs 1.2s typical) |
+| cvx-w816 | P2 | step.runQuery latency bug - full result through workpool |
+
+### Documentation & Testing Harness Tasks
+
+| Bead ID | Priority | Task |
+| --- | --- | --- |
+| cvx-434r | P2 | Cross-reference workflow-testing harness against attic/workflow examples |
+| cvx-lzpf | P3 | Add onComplete handler pattern to workflow-testing harness |
+| cvx-h581 | P3 | Add workflow event testing (awaitEvent/sendEvent) to testing harness |
+| cvx-9enk | P3 | Document unit test vs integration test approaches |
+
+### Workflow-Testing Harness Cross-Reference Analysis
+
+Comparing `docs/experiments/workflow-testing/` against `attic/workflow/workflow/example/`:
+
+**Patterns we follow correctly:**
+- `workflow.define()` with proper args/returns validators
+- `step.run*` methods for durable step execution
+- Explicit return types to break type inference cycles
+- Status polling via `workflow.status()`
+
+**Gaps identified (tracked as beads):**
+1. **Missing onComplete pattern** (cvx-lzpf): Official examples use `onComplete` callback
+   with context to handle workflow completion and cleanup. Useful for automatic result recording.
+
+2. **No retry configuration**: Official example shows `workpoolOptions: { retryActionsByDefault: true }`
+   and per-step retry overrides. Testing harness doesn't configure retries.
+
+3. **Missing event tests** (cvx-h581): Official example shows `ctx.awaitEvent()` and
+   `workflow.sendEvent()` for human-in-the-loop patterns. Not tested in harness.
+
+4. **Test approach documentation** (cvx-9enk): Official uses `initConvexTest()` with fake
+   timers for unit tests. Our harness uses live `ConvexHttpClient` for integration tests.
+   Both approaches are valid for different purposes - needs documentation.
+
+**Official example patterns to adopt:**
+```typescript
+// onComplete handler pattern
+await workflow.start(ctx, internal.example.myWorkflow, args, {
+  onComplete: internal.example.handleOnComplete,
+  context: { customData: "passed through" },
+});
+
+// Retry configuration
+const workflow = new WorkflowManager(components.workflow, {
+  workpoolOptions: {
+    retryActionsByDefault: true,
+    defaultRetryBehavior: { maxAttempts: 3, initialBackoffMs: 100, base: 2 },
+  },
+});
+
+// Event-based coordination
+await ctx.awaitEvent({ name: "userApproval" });
+await workflow.sendEvent(ctx, { name: "userApproval", workflowId, value: true });
+```
 
 * * *
 
