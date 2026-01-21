@@ -673,23 +673,35 @@ if (tool?.execute == null) {
 
 ### Active Investigations (Tracked Beads)
 
-| Bead ID | Priority | Issue | Test File |
+| Bead ID | Priority | Issue | Status |
 | --- | --- | --- | --- |
-| cvx-5kc4 | P1 | Investigate 37% unaccounted/unmeasured time in workflow runs | `external-engineer-issues.test.ts` |
-| cvx-fcqi | P1 | DB subscription wake-up failure after complex tools (6s gaps) | `external-engineer-issues.test.ts` |
-| cvx-g6ac | P2 | Verify large payload overhead claim | `payload-overhead.test.ts`, `external-engineer-issues.test.ts` |
+| ~~cvx-5kc4~~ | ~~P1~~ | ~~Investigate 37% unaccounted/unmeasured time~~ | ✅ ANSWERED: Deep instrumentation achieved 91.9% accountability |
+| cvx-fcqi | P1 | DB subscription wake-up failure after complex tools (6s gaps) | Open - needs long-running step tests |
+| cvx-g6ac | P2 | Verify large payload overhead claim | Open - needs payload size variance tests |
 | ~~cvx-1l22~~ | ~~P2~~ | ~~Add test case for `llm_filtered_web_search` pattern~~ | ✅ DONE: `external-engineer-issues.test.ts` |
-| cvx-2t3o | P2 | Step overhead P95 outliers (5.8s vs 1.2s typical) | `external-engineer-issues.test.ts` |
-| cvx-vjh4 | P2 | step.runQuery latency bug - full result through workpool | `payload-overhead.test.ts` |
+| cvx-2t3o | P2 | Step overhead P95 outliers (5.8s vs 1.2s typical) | Open - needs variance analysis |
+| cvx-vjh4 | P2 | step.runQuery latency bug - full result through workpool | Open - needs query vs action comparison |
+| ~~cvx-d3nl~~ | ~~P2~~ | ~~Investigate journal load time scaling~~ | ✅ ANSWERED: Only 1.4% of time - NOT main issue |
+| ~~cvx-ox3h~~ | ~~P2~~ | ~~Investigate workpool coordination overhead~~ | ✅ ANSWERED: 56.3% = call(36%) + return(20.3%) |
+| ~~cvx-w9ev~~ | ~~P2~~ | ~~Investigate step completion handling~~ | ✅ ANSWERED: 20.3% step return overhead |
 
-### External Engineer Issue Reproduction Tests
+### Key Findings from Instrumented Workflow Analysis
 
-A comprehensive test file has been created at `docs/experiments/workflow-testing/tests/external-engineer-issues.test.ts` that specifically reproduces the issues from the external engineer's analysis:
+The fully-instrumented workflow (cvx-88z7) answered multiple investigation questions:
 
-1. **cvx-5kc4: 37% Unaccounted Time** - `accountabilityTrackingWorkflow` measures total workflow time vs sum of measured components
-2. **cvx-fcqi, cvx-1l22: 6s Gaps After Complex Tools** - `mixedToolPatternWorkflow` simulates the llm_filtered_web_search pattern
-3. **cvx-2t3o: Step Overhead P95 Outliers** - Uses `minimalOverheadWorkflow` with variance analysis
-4. **cvx-g6ac: Large Payload Overhead** - Uses `variablePayloadWorkflow` with linear regression
+| Question | Answer |
+| --- | --- |
+| What causes 37% unaccounted time? | Lack of deep instrumentation. With proper instrumentation: 91.9% accountability |
+| Is journal replay the bottleneck? | NO - only 1.4% of time. Workpool is the bottleneck (56.3%) |
+| What is workpool coordination overhead? | 56.3% = Step Call (36.0%) + Step Return (20.3%) |
+| What is step completion overhead? | 20.3% (~936ms per step) |
+
+### Remaining Investigations
+
+1. **cvx-fcqi: 6s Gaps** - Need tests with long-running steps to reproduce scheduler fallback
+2. **cvx-g6ac: Payload Overhead** - Need tests with varying payload sizes
+3. **cvx-2t3o: P95 Outliers** - Need variance analysis across many runs
+4. **cvx-vjh4: runQuery Latency** - Need to compare runQuery vs runAction overhead
 
 New actions added to support these tests:
 - `simulateLlmFilteredWebSearch`: Multi-phase action (search → LLM filter passes → large result)
