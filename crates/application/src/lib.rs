@@ -1,4 +1,5 @@
 #![feature(try_blocks)]
+#![feature(stmt_expr_attributes)]
 #![feature(iterator_try_collect)]
 #![feature(coroutines)]
 #![feature(round_char_boundary)]
@@ -74,6 +75,7 @@ use common::{
     },
     document::{
         DocumentUpdate,
+        ParsedDocument,
         CREATION_TIME_FIELD_PATH,
     },
     errors::{
@@ -270,6 +272,7 @@ use model::{
             AnalyzedModule,
             Visibility,
         },
+        types::ModuleMetadata,
         ModuleModel,
     },
     scheduled_jobs::{
@@ -289,7 +292,10 @@ use model::{
             PackageSize,
             SourcePackage,
         },
-        upload_download::upload_package,
+        upload_download::{
+            download_package,
+            upload_package,
+        },
         SourcePackageModel,
     },
     udf_config::{
@@ -2031,9 +2037,12 @@ impl<RT: Runtime> Application<RT> {
     ) -> anyhow::Result<(
         Option<ExternalDepsPackageId>,
         BTreeMap<ComponentDefinitionPath, SourcePackage>,
+        Vec<ModuleConfig>,
     )> {
         let upload_limit = Arc::new(Semaphore::new(*APPLICATION_MAX_CONCURRENT_UPLOADS));
 
+        let mut app_functions: Vec<ModuleConfig> =
+            config.app_definition.changed_runtime_modules.clone();
         let root_future = async {
             let permit = upload_limit.acquire().await?;
             let external_deps_id_and_pkg = if !config.node_dependencies.is_empty() {
@@ -2044,7 +2053,84 @@ impl<RT: Runtime> Application<RT> {
             } else {
                 None
             };
-            let app_modules = config.app_definition.modules().cloned().collect();
+            if !config
+                .app_definition
+                .unchanged_runtime_module_hashes
+                .is_empty()
+            {
+                // Query existing packages from the database
+                let mut tx = self.begin(Identity::system()).await?;
+
+                // Get existing package for root component
+                let existing_root_package =
+                    SourcePackageModel::new(&mut tx, TableNamespace::Global)
+                        .get_latest()
+                        .await?;
+
+                let module_metadata: BTreeMap<
+                    CanonicalizedModulePath,
+                    ParsedDocument<ModuleMetadata>,
+                > = ModuleModel::new(&mut tx)
+                    .get_all_metadata(ComponentId::Root)
+                    .await?
+                    .into_iter()
+                    .map(|module| (module.path.clone(), module))
+                    .collect();
+
+                tx.into_token()?;
+
+                // Download root package
+                let existing_app_modules: BTreeMap<CanonicalizedModulePath, ModuleConfig> =
+                    if let Some(root_pkg) = existing_root_package {
+                        download_package(
+                            self.modules_storage().clone(),
+                            root_pkg.storage_key.clone(),
+                            root_pkg.sha256.clone(),
+                        )
+                        .await?
+                        .into_values()
+                        .map(|v| (v.path.clone().canonicalize(), v))
+                        .collect()
+                    } else {
+                        anyhow::bail!("Failed to download source package for root component.");
+                    };
+
+                // Add unchanged modules to app_functions
+                for unchanged_module in config.app_definition.unchanged_runtime_module_hashes.iter()
+                {
+                    let canonicalized_module_path = unchanged_module.path.clone().canonicalize();
+                    let Some(module) = existing_app_modules.get(&canonicalized_module_path) else {
+                        anyhow::bail!(ErrorMetadata::conflict(
+                            "MissingExistingModule",
+                            "Could not find existing unchanged module."
+                        ));
+                    };
+                    let Some(metadata) = module_metadata.get(&canonicalized_module_path) else {
+                        anyhow::bail!(ErrorMetadata::conflict(
+                            "MissingExistingModuleMetadata",
+                            "Missing metadata for existing module."
+                        ));
+                    };
+                    if metadata.sha256 != unchanged_module.sha256 {
+                        anyhow::bail!(ErrorMetadata::conflict(
+                            "ExistingModuleHashConflict",
+                            "Existing module hash does not match."
+                        ));
+                    }
+                    if metadata.environment != unchanged_module.environment {
+                        anyhow::bail!(ErrorMetadata::conflict(
+                            "ExistingModuleEnvConflict",
+                            "Existing module environment does not match."
+                        ));
+                    }
+                    app_functions.push(module.clone());
+                }
+            }
+            let app_modules: Vec<ModuleConfig> = config
+                .app_definition
+                .all_modules(&app_functions)
+                .cloned()
+                .collect();
             let app_pkg = self
                 .upload_package(
                     &app_modules,
@@ -2101,7 +2187,11 @@ impl<RT: Runtime> Application<RT> {
         }
 
         let external_deps_id = external_deps.map(|(id, _)| id);
-        Ok((external_deps_id, component_definition_packages))
+        Ok((
+            external_deps_id,
+            component_definition_packages,
+            app_functions,
+        ))
     }
 
     // Helper method to call analyze and throw appropriate HttpError.
@@ -2875,6 +2965,19 @@ impl<RT: Runtime> Application<RT> {
             anyhow::bail!(unauthorized_error("failure_percentage_top_k"));
         }
         self.function_log.cache_hit_percentage_top_k(window, k)
+    }
+
+    pub async fn function_call_count_top_k(
+        &self,
+        identity: Identity,
+        window: MetricsWindow,
+        k: usize,
+    ) -> anyhow::Result<Vec<(String, Timeseries)>> {
+        if !(identity.is_admin() || identity.is_system()) {
+            anyhow::bail!(unauthorized_error("function_call_count_top_k"));
+        }
+
+        self.function_log.function_call_count_top_k(window, k)
     }
 
     pub async fn cache_hit_percentage(

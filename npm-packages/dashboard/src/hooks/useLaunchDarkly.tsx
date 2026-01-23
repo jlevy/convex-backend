@@ -8,6 +8,8 @@ const flagDefaults: {
   workOsEnvironmentProvisioningDashboardUi: boolean;
   enableNewDashboardVersionNotification: boolean;
   enableStatuspageWidget: boolean;
+  connectionStateCheckIntervalMs: number;
+  healthPageFunctionCallsChart: boolean;
 } = {
   commandPalette: false,
   commandPaletteDeleteProjects: false,
@@ -15,6 +17,8 @@ const flagDefaults: {
   workOsEnvironmentProvisioningDashboardUi: false,
   enableNewDashboardVersionNotification: false,
   enableStatuspageWidget: true,
+  connectionStateCheckIntervalMs: 2500,
+  healthPageFunctionCallsChart: false,
 };
 
 function kebabCaseKeys(object: typeof flagDefaults) {

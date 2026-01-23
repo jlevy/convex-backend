@@ -274,7 +274,9 @@ impl<RT: Runtime> Transaction<RT> {
         let virtual_system_mapping = self.virtual_system_mapping().clone();
         move |number| {
             let name = table_mapping.number_to_name()(number)?;
-            if let Some(virtual_name) = virtual_system_mapping.system_to_virtual_table(&name) {
+            if let Some(virtual_name) =
+                virtual_system_mapping.primary_system_to_virtual_table(&name)
+            {
                 Ok(virtual_name.clone())
             } else {
                 match table_filter {
@@ -564,9 +566,7 @@ impl<RT: Runtime> Transaction<RT> {
                 ))?;
 
         let new_document = {
-            let patched_value = value
-                .clone()
-                .apply(old_document.value().clone().into_value())?;
+            let patched_value = value.apply(old_document.value().clone().into_value())?;
             old_document.replace_value(patched_value)?
         };
         SchemaModel::new(self, namespace)
@@ -930,7 +930,6 @@ impl<RT: Runtime> Transaction<RT> {
         }
         let result = match range_results.into_iter().next() {
             Some((_, doc, timestamp)) => {
-                let is_virtual_table = self.virtual_system_mapping().is_virtual_table(&table_name);
                 let component_path = self
                     .component_path_for_document_id(doc.id())?
                     .unwrap_or_default();
@@ -939,7 +938,7 @@ impl<RT: Runtime> Transaction<RT> {
                     table_name,
                     doc.size(),
                     &self.usage_tracker,
-                    is_virtual_table,
+                    &self.virtual_system_mapping,
                 )?;
 
                 Some((doc, timestamp))
@@ -1093,7 +1092,6 @@ impl<RT: Runtime> Transaction<RT> {
         document: &ResolvedDocument,
         table_name: &TableName,
     ) -> anyhow::Result<()> {
-        let is_virtual_table = self.virtual_system_mapping().is_virtual_table(table_name);
         let component_path = self
             .component_path_for_document_id(document.id())?
             .unwrap_or_default();
@@ -1102,7 +1100,7 @@ impl<RT: Runtime> Transaction<RT> {
             table_name.clone(),
             document.size(),
             &self.usage_tracker,
-            is_virtual_table,
+            &self.virtual_system_mapping,
         )
     }
 
