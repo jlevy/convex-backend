@@ -6,6 +6,9 @@
 > 
 > This is my ([@jlevy](https://github.com/jlevy)) fork for that I use for maintaining additional documentation
 > assembled by Claude and other LLMs.
+>
+> The Convex code is identical but it's far more effective to locate docs next to the code so Claude can test and fact check them against source. (In fact, I think this is how docs should be written: by agents, for agents, next automatically from
+the code.
 
 The original Convex repository contains the open-source reactive database for web apps.
 This fork adds comprehensive research documentation and best practices guides that have
