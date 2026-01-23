@@ -1,9 +1,9 @@
 # Research Brief: Convex Database Limits, Best Practices, and Workarounds
 
-**Last Updated**: 2026-01-09
+**Last Updated**: 2026-01-20
 
-**Status**: Complete (reviewed January 2026; updated 2026-01-09 with source code verification
-and cross-references)
+**Status**: Complete (reviewed January 2026; updated 2026-01-20 with source code verification,
+cross-references, and pricing verification)
 
 **Legend**:
 
@@ -22,8 +22,11 @@ and cross-references)
 
 **Related Research**:
 
-- [research-convex-backend-limits-implementation.md](../../../project/research/current/research-convex-backend-limits-implementation.md) —
-  Deep dive into source code implementation of limits and configurability for self-hosted deployments
+- [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md) —
+  Workflow and workpool architecture, overhead analysis, and best practices for durable workflows
+
+> Note: Backend limits implementation details (source code verification, self-hosted configuration)
+> have been integrated into this document.
 
 * * *
 
@@ -163,9 +166,9 @@ Convex does not support field projection—reading any document reads the entire
 | **Maximum fields per document** | 1,024 fields | `crates/value/src/object.rs:30` | ✅ 🔒 |
 | **Maximum nesting depth (user)** | 16 levels | `crates/common/src/document.rs:102` | ✅ 🔒 |
 | **Maximum nesting depth (system)** | 64 levels | `crates/value/src/size.rs:8` | ✅ 🔒 |
-| **Maximum array elements** | 8,192 elements per array | `crates/value/src/array.rs:26` | ✅ 🔒 |
-| **Maximum field name length** | 1,024 characters | `crates/sync_types/src/identifier.rs:124` | ✅ 🔒 🔍 |
-| **Maximum identifier length** | 64 characters | `crates/sync_types/src/identifier.rs:10` | ✅ 🔒 |
+| **Maximum array elements** | 8,192 elements per array | `crates/value/src/array.rs:27` | ✅ 🔒 |
+| **Maximum field name length** | 1,024 characters | `crates/convex/sync_types/src/identifier.rs:124` | ✅ 🔒 🔍 |
+| **Maximum identifier length** | 64 characters | `crates/convex/sync_types/src/identifier.rs:10` | ✅ 🔒 |
 
 **🔍 Note on Field Name vs Identifier Length**:
 
@@ -236,7 +239,8 @@ const events = await ctx.db.query('events').collect();
 
 The source code base constant `DEFAULT_APPLICATION_MAX_FUNCTION_CONCURRENCY` is **16**
 for all function types. Convex Cloud overrides these via a "big brain" service for
-Professional plan customers (256 queries/mutations, 1000 Node actions, etc.).
+Professional plan customers. Current Pro limits (verified January 2026): 256+ queries/mutations,
+256+ V8/Node actions, 128+ HTTP actions. Starter plan uses code defaults (16 except 64 for actions).
 
 **🛠️ Self-Hosted Configuration**:
 
@@ -507,23 +511,21 @@ basis … Usually this is only needed if your product has highly bursty traffic.
 *Note: Storage quotas and pricing change periodically.
 Verify current values at [Convex Pricing](https://www.convex.dev/pricing).*
 
-**Database Storage** ⚠️ 🔄:
+**Database Storage** ✅ 🔄:
 
-| Plan | Included Storage | Bandwidth/Month | Status |
-| --- | --- | --- | --- |
-| **Starter** | 0.5 GiB | 1 GiB | ⚠️ 🔄 |
-| **Professional** | ~1 GiB+ (verify pricing page) | ~50 GiB (verify) | ⚠️ 🔄 |
+| Plan | Included Storage | Bandwidth/Month | Overage | Status |
+| --- | --- | --- | --- | --- |
+| **Starter** | 0.5 GB | 1 GB/month | $0.22/GB | ✅ 🔄 |
+| **Professional** | 50 GB | 50 GB/month | $0.20/GB | ✅ 🔄 |
 
-*Recent changes (late 2025): Convex updated their pricing model.
-Pro plan now includes 1 GB at $0.50/GB/month overage (down from previous $10/GB). Check
-official pricing.*
+*Verified January 2026 from official pricing page.*
 
-**File Storage** ⚠️ 🔄:
+**File Storage** ✅ 🔄:
 
-| Plan | Included Storage | Bandwidth/Month | Status |
-| --- | --- | --- | --- |
-| **Starter** | 1 GiB | 1 GiB | ⚠️ 🔄 |
-| **Professional** | (verify pricing page) | (verify) | ⚠️ 🔄 |
+| Plan | Included Storage | Bandwidth/Month | Overage (storage/bandwidth) | Status |
+| --- | --- | --- | --- | --- |
+| **Starter** | 1 GB | 1 GB/month | $0.03/GB / $0.33/GB | ✅ 🔄 |
+| **Professional** | 100 GB | 50 GB/month | $0.03/GB / $0.30/GB | ✅ 🔄 |
 
 **Key Constraints**:
 
@@ -608,11 +610,11 @@ the total across all index types (database indexes, text indexes, and vector ind
 | Resource | Starter Plan | Professional Plan | Status |
 | --- | --- | --- | --- |
 | **Function Calls/Month** | 1,000,000 | 25,000,000 | ✅ 🔄 |
-| **Action Execution** | 20 GiB-hours | 250 GiB-hours | ⚠️ 🔄 |
+| **Action Execution** | 20 GB-hours | 250 GB-hours | ✅ 🔄 |
 
-**Code and Argument Limits** ⚠️ 🔒:
+**Code and Argument Limits** ✅ 🔒:
 
-- **Maximum deployment code size**: 32 MiB ⚠️ (not verified in recent search)
+- **Maximum deployment code size**: 32 MiB ✅ (verified in official docs and knobs.rs:1251,1467)
 
 - **Maximum argument size**: 8 MiB per function call ✅ (Convex Runtime); 5 MiB (Node.js)
 
@@ -622,7 +624,7 @@ the total across all index types (database indexes, text indexes, and vector ind
 
 - **Starter**: 1–6 developers ✅
 
-- **Professional**: Up to 25 developers per month ⚠️
+- **Professional**: Unlimited developers ($25/developer/month) ✅
 
 **Environment Variables** ✅ 🔒:
 
@@ -1365,10 +1367,8 @@ requirements apply beyond OCC conflict handling:
   avoid re-processing on retry
 
 **See Also**:
-- [research-durable-workflows-agent-conversations.md](../../../project/research/current/research-durable-workflows-agent-conversations.md)
-  § "Idempotency Requirements for Workflow Steps" for idempotency patterns
-- [plan-2026-01-09-durable-workflows-agent-conversations-v3.md](../../../project/specs/active/plan-2026-01-09-durable-workflows-agent-conversations-v3.md)
-  § "Idempotency Contract" for implementation-ready details
+- [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md)
+  § "Best Practices for Efficient Workflows" for idempotency patterns and overhead analysis
 
 **🛠️ OCC Configuration (Self-Hosted)**:
 
@@ -1883,10 +1883,8 @@ pattern. But if those Node.js actions then call other Node.js actions, you recre
 the problematic nested same-runtime pattern.
 
 **See Also**:
-- [research-durable-workflows-agent-conversations.md](../../../project/research/current/research-durable-workflows-agent-conversations.md)
-  § "Nested Action Timeout Issue" for detailed analysis
-- [plan-2026-01-09-durable-workflows-agent-conversations-v3.md](../../../project/specs/active/plan-2026-01-09-durable-workflows-agent-conversations-v3.md)
-  § "Leaf Action Requirement" for implementation guidance
+- [research-convex-durable-workflows-architecture.md](../../../project/research/current/research-convex-durable-workflows-architecture.md)
+  § "Overhead Analysis" and "Best Practices for Efficient Workflows" for workflow architecture details
 
 **Best Practices**:
 
