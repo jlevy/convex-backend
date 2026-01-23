@@ -1,9 +1,10 @@
 # Convex Backend — Enhanced Documentation Fork
 
-> [!INFO] 
+> [!NOTE] 
 > 
 > **This is a fork of [get-convex/convex-backend](https://github.com/get-convex/convex-backend)**
-> This is my own [@jlevy](https://github.com/jlevy) fork for that I use for maintained additional documentation
+> 
+> This is my ([@jlevy](https://github.com/jlevy)) fork for that I use for maintaining additional documentation
 > assembled by Claude and other LLMs.
 
 The original Convex repository contains the open-source reactive database for web apps.
