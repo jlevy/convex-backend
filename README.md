@@ -1,15 +1,9 @@
 # Convex Backend — Enhanced Documentation Fork
 
-<p align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://static.convex.dev/logo/convex-logo-light.svg" width="600">
-  <source media="(prefers-color-scheme: light)" srcset="https://static.convex.dev/logo/convex-logo.svg" width="600">
-  <img alt="Convex logo" src="https://static.convex.dev/logo/convex-logo.svg" width="600">
-</picture>
-</p>
-
+> [!INFO] 
+> 
 > **This is a fork of [get-convex/convex-backend](https://github.com/get-convex/convex-backend)**
-> maintained by [@jlevy](https://github.com/jlevy) with additional documentation
+> This is my own [@jlevy](https://github.com/jlevy) fork for that I use for maintained additional documentation
 > assembled by Claude and other LLMs.
 
 The original Convex repository contains the open-source reactive database for web apps.
