@@ -4,10 +4,10 @@
 > 
 > **This is a fork of [get-convex/convex-backend](https://github.com/get-convex/convex-backend)**
 > 
-> This is my ([@jlevy](https://github.com/jlevy)) fork for that I use for maintaining additional documentation
+> This is my ([@jlevy](https://github.com/jlevy)) fork that I use for maintaining additional documentation
 > assembled by Claude and other LLMs.
 >
-> The Convex code is identical but it's far more effective to locate docs next to the code so agents like Claude can test and fact check docs against source. In fact, I think this is how docs should be written: by agents, for agents, automatically built to align with the code.
+> The Convex code is identical. But it's far more effective to locate docs next to the code so agents like Claude can test and fact check docs against source. In fact, I think this is how docs should be written: by agents, for agents, automatically built to align with the code.
 
 The original Convex repository contains the open-source reactive database for web apps.
 This fork adds comprehensive research documentation and best practices guides that have
