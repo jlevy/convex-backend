@@ -1,8 +1,16 @@
 # Research Brief: Convex Durable Workflows and Workpool Architecture
 
-**Last Updated**: 2026-01-20
+**Last Updated**: 2026-01-24
 
 **Status**: Complete
+
+**Component Versions Analyzed**:
+- `@convex-dev/workflow`: v0.3.3
+- `@convex-dev/workpool`: v0.3.1
+
+> **Version Note**: Overhead measurements and code references are specific to these versions.
+> Performance characteristics may change in future releases. Always verify against current
+> source when investigating issues.
 
 **Related**:
 
@@ -21,10 +29,15 @@ This document provides a deep technical analysis of Convex's durable workflow an
 components. Understanding these architectures is critical for building efficient long-running
 processes that extend beyond the 10-minute action timeout limit.
 
-**Key Finding**: Workflows introduce significant per-step overhead (estimated 100-500ms per step)
-compared to direct action execution. This overhead comes from multiple database operations per
-step, journal replay on each continuation, and workpool coordination. For short steps (< 1 second),
-this can result in 4-5x slower total execution time compared to inline action calls.
+**Key Finding**: Workflows introduce significant per-step overhead (**~2-4 seconds per step** based
+on instrumented testing; up to 8-12 seconds under high platform load) compared to direct action
+execution. This overhead comes from 5 scheduler hops through the workpool system per step, journal
+replay on each continuation, and workpool coordination. For short steps (< 1 second), this results
+in workflows being **20-40x slower** than inline action calls.
+
+> **Note on Variance**: Per-step overhead varies based on platform load, deployment type (local
+> vs cloud), and component versions. Instrumented local tests show ~4s per step; production
+> environments may see 4-12s per step depending on conditions.
 
 **Research Questions**:
 
@@ -211,7 +224,9 @@ Step Execution Flow:
 │ 8. Workflow handler re-runs (back to step 1)                           │
 └─────────────────────────────────────────────────────────────────────────┘
 
-TOTAL OVERHEAD PER STEP: ~100-300ms (not counting actual step execution)
+TOTAL OVERHEAD PER STEP: ~2-4 seconds (database + scheduler hops, not counting actual step execution)
+Note: Earlier estimates of 100-300ms were based on database operations alone;
+instrumented tests show total overhead including scheduler latency is much higher.
 ```
 
 ### Root Cause: Scheduler Hops, Not Database Latency
@@ -254,8 +269,9 @@ Each workflow step requires **5 scheduler hops**:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Why this matters**: 5 hops × 200-500ms each = 1-2.5s minimum per step, regardless of how fast
-your actual step code runs. This explains why trivial operations still take seconds.
+**Why this matters**: 5 hops × 400-800ms each = **2-4s minimum per step** (up to 8-12s under load),
+regardless of how fast your actual step code runs. This explains why trivial operations still take
+seconds. Instrumented tests confirm ~4s overhead per 100ms step on a local Convex backend.
 
 ### kick.ts Short-Circuit Optimization
 
@@ -275,8 +291,9 @@ This reduces redundant scheduling but means work may wait up to 1 second before 
 
 ### ⚠️ Important: Per-Step Overhead vs Inter-Iteration Gap
 
-**Per-step overhead** (~100-300ms): The database operation time shown above. This is the
-minimum overhead for each `step.run*()` call through the workpool.
+**Per-step overhead** (~2-4 seconds): The total scheduler hop + database operation time. This is the
+minimum overhead for each `step.run*()` call through the workpool. Note: earlier estimates of
+100-300ms only counted database operations, not scheduler latency.
 
 **Inter-iteration gap** (~1.2-1.5s typical, up to 6s): The time between the END of one
 workflow handler invocation and the START of the next. This is larger because it includes:
@@ -309,23 +326,30 @@ explains occasional ~6 second gaps observed in production.
 | --- | --- | --- | --- |
 | **Direct action call** | ~0ms | N/A | Simple one-shot operations |
 | **ctx.scheduler.runAfter** | ~20-50ms | N/A | Fire-and-forget async |
-| **Workpool enqueue** | ~100-200ms | N/A | Rate-limited async with retry |
-| **Workflow step** | ~100-300ms | ~1.2-1.5s (up to 6s) | Durable, resumable operations |
+| **Workpool enqueue** | ~200-500ms | N/A | Rate-limited async with retry |
+| **Workflow step** | **~2-4s** (up to 8-12s) | ~1.2-1.5s (up to 6s) | Durable, resumable operations |
 
-**Note**: Inter-iteration gap is measured from the END of one handler invocation to the
+**Note**: Per-step overhead includes 5 scheduler hops; earlier estimates of 100-300ms only counted
+database operations. Inter-iteration gap is measured from the END of one handler invocation to the
 START of the next. It includes scheduler wake-up, journal load, and replay overhead.
 
-### Why 4-5x Slower for Short Steps
+### Why 20-40x Slower for Short Steps
+
+For a step that takes 100ms to execute:
+
+- **Direct call**: 100ms
+- **Workflow step**: 100ms + ~2-4s scheduler overhead = **~2.1-4.1s** (20-40x slower)
 
 For a step that takes 1 second to execute:
 
 - **Direct call**: 1s
-- **Workflow step**: 1s + ~200ms DB overhead + ~1.2s inter-iteration gap = ~2.4s
+- **Workflow step**: 1s + ~2-4s scheduler overhead = **~3-5s** (3-5x slower)
 
-For a workflow with 5 iterations, each with an LLM call (5s) + tool call (1s):
-
-- **Direct inline**: 5 × (5s + 1s) = 30s
-- **Workflow**: 5 × (6s + 1.2s inter-iteration gap + 0.2s step overhead) = ~37s + journal replays
+**Instrumented test measurement** (15 steps × 100ms action, local Convex):
+- Total workflow time: 69 seconds
+- Action execution time: 1.9 seconds (2.8%)
+- Infrastructure overhead: 67.1 seconds (97.2%)
+- **Per-step overhead: ~4.1s** (for 100ms action)
 
 **Real-world measurement** (from arena project, 9-iteration workflow):
 - Total workflow time: 203 seconds
@@ -333,15 +357,54 @@ For a workflow with 5 iterations, each with an LLM call (5s) + tool call (1s):
 - Infrastructure overhead: 160 seconds (79%)
 
 **The overhead has multiple components**:
-- **Per-step DB operations**: Relatively fixed ~100-300ms
+- **Step call overhead**: ~1.6s (workpool enqueue → action start)
+- **Step return overhead**: ~0.9s (action end → step return)
+- **Inter-step overhead**: ~1.5s (between steps within handler)
 - **Inter-iteration gap**: ~1.2-1.5s typical, increases with scheduler fallback
 - **Journal replay**: Grows O(N) with iteration count
-- **Accumulated**: For N iterations, total overhead ≈ N × (inter-iteration gap + step overhead)
 
 **Performance guidance**:
-- For short steps (< 1s): overhead dominates → 2-5x slower
-- For long steps (> 10s): overhead less significant → ~1.5-2x slower
+- For short steps (< 1s): overhead dominates → **20-40x slower**
+- For medium steps (1-10s): significant overhead → **3-5x slower**
+- For long steps (> 10s): overhead less significant → **1.5-2x slower**
 - For many iterations (> 20): journal replay becomes noticeable
+
+### Quantitative Impact: Per-Step Time Budget
+
+Each workflow step includes these overhead components:
+
+| Component | Time Range | % of Step | Source |
+|-----------|------------|-----------|--------|
+| Scheduler Hop #1 (enqueue→loop) | 400-800ms | 10-20% | kickMainLoop() |
+| Scheduler Hop #2 (loop→worker) | 400-800ms | 10-20% | beginWork() |
+| **Actual Step Execution** | Variable | Variable | Your code |
+| Scheduler Hop #3 (worker→complete) | 400-800ms | 10-20% | worker.ts |
+| Scheduler Hop #4 (complete→loop) | 400-800ms | 10-20% | complete.ts |
+| Scheduler Hop #5 (loop→workflow) | 400-800ms | 10-20% | beginWork() |
+| **Total Infrastructure** | **2-4s** | **up to 99%** for fast steps | |
+
+### Quantitative Impact: Workflow-Level Overhead
+
+For a 50-step workflow (based on ~3s average overhead per step):
+
+| Scenario | Step Execution | Infrastructure | Total | Infra % |
+|----------|---------------|----------------|-------|---------|
+| Fast steps (100ms each) | 5s | 150s | 155s | 97% |
+| Medium steps (1s each) | 50s | 150s | 200s | 75% |
+| Slow steps (10s each) | 500s | 150s | 650s | 23% |
+
+### Comparison: Inline vs Workflow Mode
+
+| Metric | Inline Mode | Workflow Mode | Ratio |
+|--------|------------|---------------|-------|
+| Per-step overhead | ~0s | 2-4s | ∞ |
+| 50 steps, fast work | ~5s | ~155s | 30x |
+| Crash recovery | No | Yes | - |
+| Long-running support | No | Yes (months) | - |
+
+**When to use each mode**:
+- **Inline mode**: Development, testing, short operations (< 10 min total)
+- **Workflow mode**: Production, must-complete operations, operations spanning > 10 min
 
 ### Sources of Unmeasured/Unaccounted Overhead
 
@@ -349,10 +412,13 @@ In typical workflow timing measurements, some `step.run*()` calls are not instru
 
 | Step Call | Purpose | Typical Location | Overhead |
 | --- | --- | --- | --- |
-| `step.runQuery(getStatus)` | Cancellation check | Before LLM call | ~100-300ms |
+| `step.runQuery(getStatus)` | Cancellation check | Before LLM call | ~2-4s |
 | `step.runMutation(persist*)` | Save state | After tool execution | Measured |
-| `step.runQuery(getResult)` | Idempotency check | Before tool execution | ~100-300ms |
+| `step.runQuery(getResult)` | Idempotency check | Before tool execution | ~2-4s |
 | `step.runQuery(getResult)` | Timing/result fetch | After tool execution | **Variable** (Bug: cvx-vjh4, Outliers: cvx-2t3o) |
+
+**Note**: All `step.run*()` calls go through the workpool with 5 scheduler hops, incurring
+~2-4s overhead regardless of how fast the actual query/mutation executes.
 
 **Large payload effect**: The timing/result query returns the full tool result. For tools
 returning large payloads (e.g., web search results, API responses), this query takes longer
@@ -520,8 +586,8 @@ await step.runAction(internal.myAction, args, {
 
 ### Soft Limitations (Can Be Improved)
 
-1. **Per-Step Overhead**: ~100-300ms per step from coordination mutations
-   - Could be reduced with batching or optimized paths
+1. **Per-Step Overhead**: ~2-4 seconds per step from scheduler hops + coordination mutations
+   - Could be reduced with direct mutation calls, batching, or optimized paths
 
 2. **Journal Replay**: Full journal loaded on each continuation
    - Could use cursor-based incremental replay
@@ -637,6 +703,104 @@ if (tool?.execute == null) {
 
 * * *
 
+## Optimization Opportunities
+
+### Priority Matrix
+
+| Tier | Effort | Impact | Optimizations |
+|------|--------|--------|---------------|
+| **Tier 1** | Low | Moderate (20-30% reduction) | Direct mutation calls, inline query execution |
+| **Tier 2** | Medium | High (50-80% reduction) | Step batching, loop coalescing |
+| **Tier 3** | High | Transformative (90%+ reduction) | Hybrid execution mode, push-based completion |
+
+### Tier 1: Low Effort, Moderate Impact
+
+**1.1 Direct Mutation Calls for Completion**
+
+Replace `ctx.scheduler.runAfter(0, complete)` with `ctx.runMutation(complete)` in worker.ts.
+
+- **Savings**: Eliminates 1 scheduler hop (~400-800ms per step)
+- **Trade-off**: Longer transaction time, potential OCC conflicts
+- **Status**: Tracked as cvx-387z
+
+**1.2 Inline Execution for Queries**
+
+Execute queries inline when durability is not critical, bypassing workpool entirely.
+
+```typescript
+// Option to bypass workpool for fast queries
+if (step.kind === "query" && options.allowInline) {
+  const result = await ctx.runQuery(step.handle, step.args);
+  await persistResult(result);  // Still durable
+  return result;  // Skip 5 scheduler hops
+}
+```
+
+- **Savings**: Eliminates 5 scheduler hops (~2-4s per inline step)
+- **Trade-off**: Reduced isolation, longer workflow handler transactions
+
+### Tier 2: Medium Effort, High Impact
+
+**2.1 Step Batching**
+
+Collect multiple steps before yielding to workpool:
+
+```typescript
+const pendingSteps = [];
+while (pendingSteps.length < MAX_BATCH_SIZE) {
+  const step = getNextStep();
+  if (!step) break;
+  pendingSteps.push(step);
+}
+const results = await Promise.all(pendingSteps.map(executeStep));
+await persistBatch(results);
+```
+
+- **Savings**: For batch of 5, ~80% reduction in overhead
+- **Trade-off**: Crash loses entire batch, not just one step
+
+**2.2 Workpool Loop Coalescing**
+
+Main loop continues processing while work is available instead of rescheduling:
+
+```typescript
+while (hasActionableWork()) {
+  await processNextBatch();
+  // Only exit if truly idle or time budget exceeded
+}
+```
+
+- **Savings**: ~1-2s per step in continuous workloads
+- **Trade-off**: Longer-running functions, potential timeouts
+
+### Tier 3: High Effort, Transformative Impact
+
+**3.1 Hybrid Execution Mode**
+
+Implement dual execution paths based on step configuration:
+
+```typescript
+const workflow = defineWorkflow({
+  steps: {
+    criticalApiCall: { mode: "durable", retry: true },
+    localComputation: { mode: "fast" },
+    dataValidation: { mode: "fast" },
+  }
+});
+```
+
+- **Savings**: 5-10x improvement for mixed workloads
+- **Trade-off**: Complexity, two code paths to maintain
+
+**3.2 Push-Based Completion**
+
+Replace polling/scheduler-based completion with WebSocket/subscription notification.
+
+- **Savings**: Could achieve <1s per-step overhead
+- **Trade-off**: Major architectural change, new infrastructure
+
+---
+
 ## Open Research Questions
 
 ### Infrastructure Improvements
@@ -671,13 +835,13 @@ if (tool?.execute == null) {
    **Optimization Candidates:**
    | Hop | Current | Could Replace With | Trade-off |
    |-----|---------|-------------------|-----------|
-   | 3 | `scheduler.runAfter(0, complete)` | `ctx.runMutation(complete)` | Worker transaction longer, but saves ~200-500ms |
+   | 3 | `scheduler.runAfter(0, complete)` | `ctx.runMutation(complete)` | Worker transaction longer, but saves ~400-800ms |
    | 4 | `kickMainLoop() → scheduler.runAt()` | `ctx.runMutation(loop.main)` | Pool transaction longer, saves scheduler latency |
 
    **Theoretical Savings:**
-   - Current: 5 hops × 200-500ms/hop = 1000-2500ms per step
-   - Optimized (2 fewer hops): 3 hops × 200-500ms/hop = 600-1500ms per step
-   - **Potential savings: 400-1000ms per step (16-40% reduction)**
+   - Current: 5 hops × 400-800ms/hop = 2000-4000ms per step
+   - Optimized (2 fewer hops): 3 hops × 400-800ms/hop = 1200-2400ms per step
+   - **Potential savings: 800-1600ms per step (20-40% reduction)**
 
    **Trade-offs:**
    1. **Longer Transaction Times**: `ctx.runMutation()` executes within the calling
@@ -918,7 +1082,7 @@ const iterationEndTimestamp = Date.now();
 **Key metrics to track**:
 - **accountabilityPct**: sum(measured times) / total time (should be 95-100%)
 - **avgInterIterationGapMs**: typical ~1.2-1.5s, outliers up to 6s
-- **avgStepOverheadMs**: workflow overhead per tool call (~100-300ms)
+- **avgStepOverheadMs**: workflow overhead per tool call (~2-4s, up to 8-12s under load)
 
 * * *
 
