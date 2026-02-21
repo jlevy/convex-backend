@@ -10,7 +10,11 @@ export default query(async () => {
     signalEventListener,
     onlyAbortsOnce,
     controllerHasProperToString,
-    // abortReason,
+    abortReason,
+    abortReasonCustom,
+    abortSignalTimeout,
+    abortSignalAnyAlreadyAborted,
+    abortSignalAnyPropagates,
   });
 });
 
@@ -70,9 +74,41 @@ function controllerHasProperToString() {
   assert.strictEqual(actual, "[object AbortController]");
 }
 
-// TODO: the AbortSignal polyfill doesn't implement abort().
-// function abortReason() {
-//   const signal = AbortSignal.abort("hey!");
-//   assert.strictEqual(signal.aborted, true);
-//   assert.strictEqual(signal.reason, "hey!");
-// }
+function abortReason() {
+  const signal = AbortSignal.abort("hey!");
+  assert.strictEqual(signal.aborted, true);
+  assert.strictEqual(signal.reason, "hey!");
+}
+
+function abortReasonCustom() {
+  // AbortSignal.abort() with no argument should use a default AbortError
+  const signal = AbortSignal.abort();
+  assert.strictEqual(signal.aborted, true);
+  assert(signal.reason instanceof DOMException);
+  assert.strictEqual(signal.reason.name, "AbortError");
+}
+
+function abortSignalTimeout() {
+  // AbortSignal.timeout() should return a signal that is not yet aborted
+  const signal = AbortSignal.timeout(10000);
+  assert.strictEqual(signal.aborted, false);
+  assert.strictEqual(typeof AbortSignal.timeout, "function");
+}
+
+function abortSignalAnyAlreadyAborted() {
+  // AbortSignal.any() with an already-aborted signal should return an aborted signal
+  const aborted = AbortSignal.abort("already done");
+  const signal = AbortSignal.any([aborted]);
+  assert.strictEqual(signal.aborted, true);
+  assert.strictEqual(signal.reason, "already done");
+}
+
+function abortSignalAnyPropagates() {
+  // AbortSignal.any() should propagate abort from input signals
+  const controller = new AbortController();
+  const signal = AbortSignal.any([controller.signal]);
+  assert.strictEqual(signal.aborted, false);
+  controller.abort("triggered");
+  assert.strictEqual(signal.aborted, true);
+  assert.strictEqual(signal.reason, "triggered");
+}
