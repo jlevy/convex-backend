@@ -404,6 +404,30 @@ export const exampleAction = action({
 });
 ```
 
+- Always set a per-call timeout on external API calls (LLM APIs, third-party services,
+  etc.) in actions. Without a timeout, a hung external service will consume the entire
+  10-minute action budget before failing.
+
+  - Use LLM SDK timeout options when available:
+    ```typescript
+    const openai = new OpenAI({ timeout: 30_000 }); // 30s
+    const anthropic = new Anthropic({ timeout: 30_000 }); // 30s
+    ```
+
+  - For raw `fetch` calls, use a manual AbortController (works in both V8 and Node runtimes):
+    ```typescript
+    function timeoutSignal(ms: number): AbortSignal {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), ms);
+      return controller.signal;
+    }
+
+    const response = await fetch(url, { signal: timeoutSignal(30_000) });
+    ```
+
+  - Do NOT use `AbortSignal.timeout()` in Convex V8 runtime actions (without `"use node";`).
+    It is not yet available in the V8 runtime. It works in Node runtime actions only.
+
 ## Scheduling guidelines
 
 ### Cron guidelines
@@ -785,7 +809,7 @@ export const sendMessage = mutation({
   },
 });
 
-const openai = new OpenAI();
+const openai = new OpenAI({ timeout: 30_000 }); // Always set a timeout for external API calls
 
 export const generateResponse = internalAction({
   args: {

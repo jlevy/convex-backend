@@ -331,7 +331,96 @@ For operations that may exceed this limit:
 
    - Minimize logging and console output
 
-### 3.1 Logging Limits
+### 3.1 External API Call Timeouts Within Actions
+
+**Problem**: External API calls (especially LLM APIs like OpenAI, Anthropic, etc.) can hang
+indefinitely within an action. If no per-call timeout is set, the call blocks until the
+action's 10-minute platform timeout fires, wasting resources and leaving users waiting.
+
+**Why `AbortSignal.timeout()` doesn't work in V8 runtime**: The Convex V8 runtime (actions
+without `"use node";`) does not include `AbortSignal.timeout()`, `AbortSignal.any()`, or
+`AbortSignal.abort()`. These are newer Web API additions that are not yet polyfilled in the
+Convex runtime. They are available in Node.js actions (`"use node";`).
+
+**Workaround 1: Manual AbortController + setTimeout** (works in both V8 and Node runtimes):
+
+```typescript
+// Helper: creates an AbortSignal that fires after the given duration
+function timeoutSignal(ms: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
+
+// Usage in an action
+export const callLLM = internalAction({
+  args: { prompt: v.string() },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: args.prompt }] }),
+      signal: timeoutSignal(30_000), // 30 second timeout
+    });
+    const data = await response.json();
+    return data.choices[0].message.content;
+  },
+});
+```
+
+This is the recommended general-purpose approach. It works on all existing Convex deployments
+because `AbortController` is available as a global in both V8 and Node runtimes.
+
+**Workaround 2: LLM SDK-level timeouts** (no AbortSignal needed):
+
+Most LLM SDKs have built-in timeout options that use their own internal timer mechanisms:
+
+```typescript
+// OpenAI SDK
+const openai = new OpenAI({ timeout: 30_000 }); // milliseconds
+
+// Anthropic SDK
+const anthropic = new Anthropic({ timeout: 30_000 }); // milliseconds
+```
+
+These are the simplest option when using an SDK rather than raw `fetch`.
+
+**Workaround 3: AbortController with cleanup** (for streaming or multi-step operations):
+
+```typescript
+export const streamLLM = internalAction({
+  args: { prompt: v.string() },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000); // 60s timeout
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        body: JSON.stringify({ stream: true, messages: [{ role: "user", content: args.prompt }] }),
+        signal: controller.signal,
+      });
+      // ... process streaming response ...
+      return result;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+});
+```
+
+**Best Practice**: Always set a per-call timeout on external API calls in actions. A
+reasonable default is 30-60 seconds for LLM calls. Without a per-call timeout, a hung
+external service will consume the entire 10-minute action budget before failing.
+
+| Approach | V8 Runtime | Node Runtime | Needs Convex Update? |
+| --- | --- | --- | --- |
+| Manual AbortController + setTimeout | Yes | Yes | No |
+| LLM SDK `timeout` option | Yes | Yes | No |
+| `AbortSignal.timeout()` | No (not yet polyfilled) | Yes (Node 18+) | Yes (V8 only) |
+
+### 3.2 Logging Limits
 
 **Limit** ✅ 🔒 🔍: 256 log lines per function execution
 
